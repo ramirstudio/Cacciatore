@@ -15,6 +15,8 @@ import re
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin
 
+from .rete import ErroreRete
+
 log = logging.getLogger(__name__)
 
 SEGNI_VALUTA = [
@@ -110,7 +112,13 @@ def leggi_shopify(fonte, rete):
     for coll in collezioni:
         percorso = f"/collections/{coll}/products.json" if coll else "/products.json"
         for pagina in range(1, int(fonte.get("max_pagine", 10)) + 1):
-            r = rete.get(base + percorso, params={"limit": per_pagina, "page": pagina})
+            try:
+                r = rete.get(base + percorso, params={"limit": per_pagina, "page": pagina})
+            except ErroreRete:
+                if pagina == 1 and not voci:
+                    raise
+                completo = False  # pagine successive non raggiunte: tengo quelle già lette
+                break
             try:
                 prodotti = r.json().get("products", [])
             except ValueError as e:
@@ -158,7 +166,13 @@ def leggi_woocommerce(fonte, rete):
         parametri = {"per_page": per_pagina, "page": pagina, "orderby": "date", "order": "desc"}
         if fonte.get("categoria"):
             parametri["category"] = fonte["categoria"]
-        r = rete.get(base + "/wp-json/wc/store/v1/products", params=parametri)
+        try:
+            r = rete.get(base + "/wp-json/wc/store/v1/products", params=parametri)
+        except ErroreRete:
+            if pagina == 1:
+                raise
+            completo = False
+            break
         prodotti = r.json()
         if not isinstance(prodotti, list):
             raise ValueError(f"{base}: la risposta WooCommerce non è un elenco")
