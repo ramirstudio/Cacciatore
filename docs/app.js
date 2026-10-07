@@ -29,7 +29,9 @@
     if (ore < 48) return ore + " h fa";
     return Math.round(ore / 24) + " giorni fa";
   }
-  function paese(codice) { return dati.nomi_paesi[codice] || codice || "paese non indicato"; }
+  var PAESI_BASE = { FI: "Finlandia", SE: "Svezia", DK: "Danimarca", IE: "Irlanda", PT: "Portogallo", LU: "Lussemburgo",
+    CH: "Svizzera", NO: "Norvegia", TR: "Turchia", KR: "Corea del Sud", TW: "Taiwan", CA: "Canada", AU: "Australia" };
+  function paese(codice) { return dati.nomi_paesi[codice] || PAESI_BASE[codice] || codice || "paese non indicato"; }
 
   function popolaPaesi() {
     var presenti = {};
