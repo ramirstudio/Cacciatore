@@ -3,7 +3,7 @@ dichiara chi è. Se un sito vieta un percorso, Cacciatore non lo scarica."""
 import logging
 import os
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 from urllib.robotparser import RobotFileParser
 
 import requests
@@ -70,18 +70,19 @@ class Rete:
         percorso = u.path + (("?" + u.query) if u.query else "")
         return self._regole(self._base(url)).can_fetch(AGENTE, percorso or "/")
 
-    def get(self, url, params=None):
+    def get(self, url, params=None, intestazioni=None, robots=True):
+        """robots=False solo per le API ufficiali usate con la propria chiave: lì vale il contratto dell'API."""
         if params:
             sep = "&" if "?" in url else "?"
-            url = url + sep + "&".join(f"{k}={v}" for k, v in params.items())
-        if not self.permesso(url):
+            url = url + sep + urlencode(params)
+        if robots and not self.permesso(url):
             raise Vietato(f"robots.txt vieta {url}")
         base = self._base(url)
         for tentativo in range(2):
             self._pausa(base)
             self.richieste += 1
             try:
-                r = self.s.get(url, timeout=self.timeout)
+                r = self.s.get(url, timeout=self.timeout, headers=intestazioni)
             except requests.RequestException as e:
                 raise ErroreRete(f"{url}: {e}") from e
             if r.status_code in (429, 503) and tentativo == 0:
