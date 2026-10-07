@@ -66,6 +66,9 @@ ricerche:
   - nome: Classici a buon prezzo
     classico: true                # avviso solo se è un affare, non per il punteggio
     q: "(canon ae-1,pentax k1000,olympus om-1,nikon fm2,minolta x-700,yashica fx-3,canon a-1,pentax mx,praktica mtl)"
+  - nome: Marche note a prezzo basso
+    classico: true                # avviso solo se è un affare
+    q: "(sony a7,sony a6000,sony a6300,sony rx100,canon eos r,canon 5d,canon 6d,canon 80d,canon g7x,nikon d750,nikon d810,nikon z6,fujifilm x100,fujifilm x-t,panasonic gh5,leica q,olympus e-m)"
 
 # Negozi e siti di usato, letti direttamente dalle loro pagine pubbliche.
 # Cacciatore legge robots.txt di ogni sito e salta ciò che vieta. Per aggiungere un negozio basta
@@ -90,6 +93,28 @@ fonti:
     paese: DE
     valuta: EUR
     ogni_minuti: 120
+  - nome: Kamerastore
+    tipo: shopify
+    url: https://kamerastore.com
+    collezioni: [all]
+    solo_usato: true              # il catalogo contiene anche nuovo, film e servizi
+    paese: FI
+    valuta: EUR
+    ogni_minuti: 120
+  - nome: Nikon Service Dresden
+    tipo: shopify
+    url: https://www.nikonservice-dresden.de
+    collezioni: [kameras-gebrauchtware, objektive-gebrauchtware, zubehor-gebrauchtware]
+    paese: DE
+    valuta: EUR
+    ogni_minuti: 120
+  - nome: Japan Camera Hunter
+    tipo: woocommerce
+    url: https://www.japancamerahunter.com
+    categoria: cameras-for-sale
+    paese: JP
+    valuta: USD
+    ogni_minuti: 240
   # Modelli per altri tipi di sito (togli il cancelletto e compila):
   #
   # - nome: Negozio WooCommerce
@@ -173,6 +198,66 @@ allegro:
 # Peso di ogni termine nel punteggio di rarità. Il punteggio finale è la somma, massimo 10.
 # I modelli molto diffusi pesano 1, quelli difficili da trovare 3-6.
 punteggio:
+  # modelli di marca diffusa: peso 0, servono solo a confrontare i prezzi tra annunci dello stesso modello
+  comuni:
+    - sony a7
+    - sony a7 ii
+    - sony a7 iii
+    - sony a7r
+    - sony a7r ii
+    - sony a7s
+    - sony a6000
+    - sony a6100
+    - sony a6300
+    - sony a6400
+    - sony rx100
+    - sony zv-1
+    - canon eos r
+    - canon eos rp
+    - canon eos r6
+    - canon eos 5d
+    - canon eos 5d mark ii
+    - canon eos 5d mark iii
+    - canon eos 5d mark iv
+    - canon eos 6d
+    - canon eos 6d mark ii
+    - canon eos 80d
+    - canon eos 90d
+    - canon eos 7d
+    - canon eos 77d
+    - canon eos m50
+    - canon powershot g7 x
+    - canon powershot g9 x
+    - nikon d750
+    - nikon d810
+    - nikon d850
+    - nikon d7200
+    - nikon d7500
+    - nikon d5600
+    - nikon z5
+    - nikon z6
+    - nikon z6 ii
+    - nikon z fc
+    - fujifilm x100
+    - fujifilm x100s
+    - fujifilm x100t
+    - fujifilm x100f
+    - fujifilm x-t2
+    - fujifilm x-t3
+    - fujifilm x-t30
+    - fujifilm x-pro2
+    - fujifilm x-e3
+    - panasonic gh5
+    - panasonic gh4
+    - panasonic g9
+    - panasonic lumix s5
+    - olympus om-d e-m1
+    - olympus om-d e-m5
+    - leica q
+    - leica m10
+    - leica d-lux
+    - ricoh gr iii
+    - ricoh gr ii
   termini:
     # fotocamere sovietiche
     zorki: 1
