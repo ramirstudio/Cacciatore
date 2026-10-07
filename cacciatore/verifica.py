@@ -70,6 +70,17 @@ def controlla(fonte, cfg, rete):
     return esito
 
 
+def diagnosi_chiavi(cid, sec):
+    """Forma delle chiavi, senza rivelarle: basta a riconoscere sandbox, valori scambiati, spazi o a capo."""
+    def forma(v):
+        return f"{len(v)} caratteri" + (", con spazi o a capo ai margini" if v != v.strip() else "") + \
+               (", con virgolette" if v.strip()[:1] in "\"'" and v.strip() else "")
+    amb = "Production" if "-PRD-" in cid.upper() else ("SANDBOX" if "-SBX-" in cid.upper() else "non riconoscibile")
+    return (f"App ID: {forma(cid)}, ambiente {amb}, inizia con «{cid.strip()[:4]}». "
+            f"Cert ID: {forma(sec)}, inizia con «{sec.strip()[:4]}» (in Production comincia con PRD-). "
+            f"Se Client ID e Secret sono uguali o il Secret non comincia con PRD-, sono scambiati o è il Dev ID.")
+
+
 def controlla_ebay(prova=None):
     """Una chiamata vera a eBay: dice se le chiavi funzionano e, se no, riporta la risposta di eBay parola per parola."""
     esito = {"nome": "eBay", "tipo": "api", "url": "", "ok": False, "robots": None, "letti": 0, "rilevanti": 0,
@@ -78,13 +89,14 @@ def controlla_ebay(prova=None):
     if not (cid and sec):
         esito["nota"] = "i secret EBAY_CLIENT_ID ed EBAY_CLIENT_SECRET non arrivano al programma (nome sbagliato o messi nella scheda Variables)"
         return esito
+    esito["diagnosi"] = diagnosi_chiavi(os.environ.get("EBAY_CLIENT_ID", ""), os.environ.get("EBAY_CLIENT_SECRET", ""))
     try:
         r = prova() if prova else Ebay(cid, sec).prova()
     except Exception as e:  # noqa: BLE001
         esito["nota"] = f"eBay non raggiungibile: {e}"
         return esito
     if r["token"] != 200:
-        esito["nota"] = f"token rifiutato ({r['token']}): {r['token_testo']}"
+        esito["nota"] = f"token rifiutato ({r['token']}): {r['token_testo']}. {esito['diagnosi']}"
     elif r.get("ricerca") != 200:
         esito["nota"] = f"token ok, ricerca rifiutata ({r.get('ricerca')}): {r.get('ricerca_testo')}"
     else:
