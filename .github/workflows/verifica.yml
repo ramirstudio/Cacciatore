@@ -16,6 +16,8 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Prova delle fonti
         env:
+          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           ETSY_API_KEY: ${{ secrets.ETSY_API_KEY }}
           ETSY_API_SECRET: ${{ secrets.ETSY_API_SECRET }}
           EMAIL_IMAP_UTENTE: ${{ secrets.EMAIL_IMAP_UTENTE }}
