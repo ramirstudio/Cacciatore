@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cacciatore</title>
+<meta name="theme-color" content="#f3eee4">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="testata">
+  <h1>Cacciatore</h1>
+  <p id="stato" class="nota"></p>
+</header>
+
+<div class="corpo">
+  <aside class="filtri">
+    <details id="pannello" open>
+      <summary>Filtri</summary>
+      <label>Cerca nel titolo
+        <input id="f-testo" type="search" autocomplete="off">
+      </label>
+      <label>Tipo
+        <select id="f-tipo">
+          <option value="">Tutti</option>
+          <option value="fotocamera">Fotocamere</option>
+          <option value="ottica">Ottiche</option>
+          <option value="altro">Accessori e altro</option>
+        </select>
+      </label>
+      <label>Paese del venditore
+        <select id="f-paese"><option value="">Tutti</option></select>
+      </label>
+      <label>Fonte
+        <select id="f-fonte"><option value="">Tutte</option></select>
+      </label>
+      <label>Rarità minima
+        <select id="f-rarita">
+          <option value="0">Qualsiasi</option>
+          <option value="1">1 o più</option>
+          <option value="3">3 o più</option>
+          <option value="5">5 o più</option>
+          <option value="7">7 o più</option>
+        </select>
+      </label>
+      <label>Costo totale massimo, EUR
+        <input id="f-max" type="number" min="0" step="10" inputmode="numeric">
+      </label>
+      <label>Ordina per
+        <select id="f-ordine">
+          <option value="novita">Più recenti</option>
+          <option value="rarita">Più rari</option>
+          <option value="prezzo">Prezzo crescente</option>
+          <option value="affare">Migliori affari</option>
+        </select>
+      </label>
+      <label class="spunta"><input id="f-affari" type="checkbox"> Solo affari</label>
+      <label class="spunta"><input id="f-nofuoriue" type="checkbox"> Solo UE, senza dogana</label>
+      <label class="spunta"><input id="f-solopreferiti" type="checkbox"> Solo preferiti</label>
+      <label class="spunta"><input id="f-nascosti" type="checkbox"> Mostra anche quelli nascosti</label>
+    </details>
+    <details id="fonti" hidden>
+      <summary>Fonti</summary>
+      <ul id="elenco-fonti" class="fonti"></ul>
+    </details>
+  </aside>
+
+  <main>
+    <p id="conteggio" class="nota"></p>
+    <ul id="elenco" class="elenco"></ul>
+    <p id="vuoto" class="vuoto" hidden></p>
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

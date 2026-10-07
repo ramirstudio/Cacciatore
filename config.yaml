@@ -1,0 +1,331 @@
+# Impostazioni di Cacciatore. Si modifica direttamente su GitHub, senza toccare il codice.
+
+generale:
+  conserva_giorni: 10             # dopo quanti giorni senza vederlo un annuncio sparisce dal sito
+  chiamate_per_esecuzione: 60     # limite eBay: 5.000 chiamate al giorno; 60 x 48 esecuzioni = 2.880
+  max_avvisi_per_esecuzione: 12   # oltre questo numero Telegram riceve un solo messaggio riassuntivo
+  risultati_per_chiamata: 50
+  paesi_esclusi: [IT]             # i venditori italiani non interessano
+  consegna_in: IT                 # eBay mostra solo annunci che spediscono qui
+  categoria_ebay: "625"           # Fotocamere e foto. Se non esce nulla, lascia vuoto: ""
+
+avvisi:
+  soglia_punteggio: 5             # punteggio minimo (0-10) per l'avviso su un pezzo particolare
+  affare_sotto_mediana: 0.60      # affare = costo totale sotto il 60% della mediana di mercato
+  affare_minimo_annunci: 6        # servono almeno 6 annunci simili per calcolare la mediana
+  affare_prezzo_minimo_eur: 15    # sotto questa cifra non è un affare ma un errore o un pezzo rotto
+  riavvisa_se_ribasso: 0.20       # nuovo avviso se il prezzo scende di almeno il 20%
+
+# Paese del venditore e sito eBay da interrogare per trovarlo.
+# I venditori romeni, bulgari, giapponesi ecc. pubblicano su siti eBay diversi:
+# se un paese non produce risultati, prova a cambiare il sito.
+paesi:
+  RO: EBAY_DE
+  BG: EBAY_DE
+  PL: EBAY_PL
+  CZ: EBAY_DE
+  SK: EBAY_DE
+  HU: EBAY_DE
+  HR: EBAY_DE
+  SI: EBAY_DE
+  EE: EBAY_DE
+  LV: EBAY_DE
+  LT: EBAY_DE
+  GR: EBAY_DE
+  DE: EBAY_DE
+  AT: EBAY_AT
+  GB: EBAY_GB
+  JP: EBAY_US
+  CN: EBAY_US
+  HK: EBAY_US
+
+# Stima del costo di importazione dai paesi fuori UE (Regno Unito, Giappone, Cina, Hong Kong).
+importazione:
+  iva_importazione: 0.22
+  soglia_sdoganamento_eur: 150
+  costo_sdoganamento_eur: 12      # commissione tipica del corriere oltre la soglia
+  dazio: 0.0                      # fotocamere e ottiche sono in genere esenti
+  spedizione_stimata_eur: 25      # usata quando l'annuncio non indica il costo di spedizione
+
+# Gruppi di ricerca. Le parentesi con le virgole significano "uno qualsiasi di questi".
+ricerche:
+  - nome: Fotocamere sovietiche e dell'Est
+    q: "(zorki,fed,kiev,zenit,horizont,lomo,smena,salut,lubitel,moskva,sputnik,vega)"
+  - nome: Ottiche sovietiche
+    q: "(helios,jupiter,industar,tair,mir-1,zenitar,rubinar,volna,orion-15,peleng,kaleinar)"
+  - nome: Medio e grande formato
+    q: "(mamiya,bronica,fujica,pentacon six,rolleiflex,rolleicord,yashica mat,linhof,graflex,sinar,wista)"
+  - nome: Ottiche e fotocamere tedesche e francesi
+    q: "(meyer optik,trioplan,primoplan,biotar,exakta,zeiss ikon,contarex,voigtlander,angenieux,som berthiot)"
+  - nome: Giapponesi particolari
+    q: "(topcon,kowa,miranda,petri,konica hexar,olympus pen,olympus xa,ricoh gr1,pentax 67,canon 7)"
+  - nome: Cinesi e ottiche moderne di nicchia
+    q: "(seagull,phenix,great wall,pearl river,holga,ttartisan,7artisans,mitakon,laowa)"
+  - nome: Formati e usi insoliti
+    q: "(anamorphic,widelux,noblex,horizon 202,subminiature,minox,spy camera,stereo camera,panoramic camera,aerial camera)"
+  - nome: Classici a buon prezzo
+    classico: true                # avviso solo se è un affare, non per il punteggio
+    q: "(canon ae-1,pentax k1000,olympus om-1,nikon fm2,minolta x-700,yashica fx-3,canon a-1,pentax mx,praktica mtl)"
+
+# Negozi e siti di usato, letti direttamente dalle loro pagine pubbliche.
+# Cacciatore legge robots.txt di ogni sito e salta ciò che vieta. Per aggiungere un negozio basta
+# copiare un blocco e cambiare nome e indirizzo; poi lancia "Verifica fonti" da Actions per controllare.
+# Alla prima lettura di una fonte nuova nessun avviso: il catalogo esistente diventa la base di partenza.
+fonti:
+  - nome: Analogue Shop
+    tipo: shopify                 # il negozio espone /products.json
+    url: https://analogueshop.com
+    paese: NL
+    valuta: EUR
+    ogni_minuti: 120
+  - nome: Analogue Wonderland
+    tipo: shopify
+    url: https://analoguewonderland.co.uk
+    paese: GB
+    valuta: GBP                   # Regno Unito: il costo di importazione viene stimato
+    ogni_minuti: 120
+  - nome: Safelight Berlin
+    tipo: shopify
+    url: https://safelightberlin.com
+    paese: DE
+    valuta: EUR
+    ogni_minuti: 120
+  # Modelli per altri tipi di sito (togli il cancelletto e compila):
+  #
+  # - nome: Negozio WooCommerce
+  #   tipo: woocommerce           # espone /wp-json/wc/store/v1/products
+  #   url: https://esempio.com
+  #   paese: DE
+  #   valuta: EUR
+  #
+  # - nome: Sito con dati strutturati
+  #   tipo: jsonld                # pagine di elenco con schema.org Product (quasi tutti i negozi moderni)
+  #   url: https://esempio.com
+  #   urls:                       # le pagine di elenco da leggere
+  #     - https://esempio.com/categoria/fotocamere-usate
+  #     - https://esempio.com/categoria/obiettivi-usati
+  #   paese: FR
+  #   valuta: EUR
+  #
+  # - nome: Feed di annunci
+  #   tipo: rss
+  #   url: https://esempio.com
+  #   urls: [https://esempio.com/feed.xml]
+  #   paese: CZ
+  #   valuta: CZK
+  #
+  # - nome: Sito senza dati strutturati
+  #   tipo: html
+  #   url: https://esempio.com
+  #   urls: [https://esempio.com/usato]
+  #   paese: PL
+  #   valuta: PLN
+  #   selettori:                  # selettori CSS
+  #     voce: ".product-item"
+  #     titolo: ".product-title"
+  #     prezzo: ".price"
+  #     link: "a"
+  #     immagine: "img"
+
+negozi:
+  pausa_secondi: 2.0              # attesa tra due richieste allo stesso sito
+  # i negozi vendono anche accessori e materiale di consumo: questi titoli vengono scartati
+  escludi_titolo:
+    - film
+    - rullino
+    - pellicola
+    - polaroid pack
+    - instax
+    - workshop
+    - photowalk
+    - gift card
+    - voucher
+    - camera bag
+    - strap
+    - tracolla
+    - socks
+    - t-shirt
+    - poster
+    - book
+    - libro
+    - developing
+    - sviluppo
+    - battery
+    - batteria
+    - lens cap
+    - cleaning
+    - tripod
+
+# Allegro (Polonia). Spento di default: l'API di ricerca funziona solo per app verificate da Allegro.
+allegro:
+  attivo: false
+  frasi:
+    - zorki aparat
+    - kiev aparat
+    - obiektyw helios
+    - obiektyw jupiter
+    - pentacon six
+    - meyer optik
+    - mamiya aparat
+    - bronica
+    - fujica aparat
+
+# Peso di ogni termine nel punteggio di rarità. Il punteggio finale è la somma, massimo 10.
+# I modelli molto diffusi pesano 1, quelli difficili da trovare 3-6.
+punteggio:
+  termini:
+    # fotocamere sovietiche
+    zorki: 1
+    zorkiy: 1
+    "зоркий": 1
+    fed: 1
+    "фэд": 1
+    kiev: 1
+    "киев": 1
+    "kiev 60": 3
+    "kiev 88": 3
+    "kiev 4": 2
+    zenit: 1
+    "зенит": 1
+    horizont: 3
+    "horizon 202": 4
+    lomo: 1
+    "lc-a": 3
+    smena: 1
+    salut: 3
+    lubitel: 2
+    moskva: 3
+    sputnik: 5
+    vega: 3
+    # ottiche sovietiche
+    helios: 1
+    "helios 40": 4
+    "helios 103": 2
+    "гелиос": 1
+    jupiter: 2
+    "jupiter-9": 3
+    "jupiter-3": 3
+    "юпитер": 2
+    industar: 1
+    "индустар": 1
+    tair: 3
+    "таир": 3
+    "mir-1": 2
+    "mir 1": 2
+    zenitar: 2
+    rubinar: 3
+    volna: 3
+    "orion-15": 3
+    "orion 15": 3
+    peleng: 2
+    kaleinar: 3
+    arsat: 2
+    # tedesche, francesi, svizzere
+    "meyer optik": 3
+    "meyer-optik": 3
+    trioplan: 4
+    primoplan: 4
+    biotar: 3
+    "pentacon six": 3
+    exakta: 2
+    "zeiss ikon": 2
+    contarex: 4
+    voigtlander: 2
+    "voigtländer": 2
+    bessa: 1
+    retina: 2
+    "rollei 35": 3
+    rolleiflex: 3
+    rolleicord: 2
+    alpa: 6
+    linhof: 4
+    sinar: 3
+    plaubel: 4
+    makina: 4
+    minox: 3
+    angenieux: 3
+    "som berthiot": 3
+    # giapponesi
+    fujica: 3
+    gw690: 3
+    gsw690: 3
+    mamiya: 2
+    "mamiya 7": 3
+    "mamiya press": 3
+    bronica: 2
+    topcon: 2
+    kowa: 3
+    miranda: 3
+    petri: 3
+    "konica hexar": 2
+    "yashica mat": 2
+    "olympus pen f": 3
+    "olympus xa": 2
+    "ricoh gr1": 3
+    "pentax 67": 2
+    "pentax auto 110": 4
+    "canon 7": 3
+    "nikon s2": 3
+    # cinesi
+    seagull: 2
+    phenix: 2
+    "great wall": 3
+    "pearl river": 3
+    hongmei: 3
+    dongfeng: 3
+    holga: 1
+    mitakon: 2
+    laowa: 1
+    ttartisan: 1
+    "7artisans": 1
+    # formati e usi insoliti
+    prototype: 5
+    prototyp: 5
+    prototip: 5
+    anamorphic: 5
+    widelux: 5
+    noblex: 4
+    subminiature: 3
+    stereo: 2
+    panoramic: 2
+    panorama: 1
+    "spy camera": 3
+    "aerial camera": 4
+    kinor: 4
+    military: 3
+    "militär": 3
+    bundeswehr: 3
+    nva: 3
+    "limited edition": 2
+    sonderedition: 2
+    # provenienza
+    ussr: 1
+    soviet: 1
+    cccp: 1
+    "ссср": 1
+    gdr: 1
+    ddr: 1
+
+  # annunci con queste parole vengono scartati (libri, stampe, ricambi non fotografici)
+  escludi:
+    - poster
+    - postcard
+    - cartolina
+    - print only
+    - sticker
+    - keychain
+    - magnet
+    - replica
+    - reproduction
+    - instruction manual only
+    - broken lens glass only
+
+  # annunci con queste parole ricevono un avviso di prudenza
+  sospetti:
+    - whatsapp
+    - telegram
+    - paypal friends
+    - "paypal f&f"
+    - contact me
+    - copy of
+    - no returns

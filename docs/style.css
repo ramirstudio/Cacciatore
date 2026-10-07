@@ -1,0 +1,111 @@
+:root {
+  --carta: #f3eee4;
+  --inchiostro: #211d18;
+  --tenue: #6d655a;
+  --filo: #d8d0c0;
+  --mattone: #9a3b1c;
+  --verde: #2e5a3a;
+  --campo: #fbf8f1;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --carta: #1c1915;
+    --inchiostro: #ece5d8;
+    --tenue: #a69d8d;
+    --filo: #38322a;
+    --mattone: #d9825f;
+    --verde: #86b595;
+    --campo: #26221c;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--carta);
+  color: var(--inchiostro);
+  font: 400 16px/1.45 "IBM Plex Sans", Georgia, serif;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+.testata { padding: 22px 18px 6px; max-width: 1180px; margin: 0 auto; }
+h1 {
+  font: 700 28px/1.1 "Libre Baskerville", Georgia, serif;
+  margin: 0 0 4px;
+  letter-spacing: -0.01em;
+}
+.nota { color: var(--tenue); font-size: 14px; margin: 0; }
+
+.corpo { max-width: 1180px; margin: 0 auto; padding: 8px 18px 64px; }
+
+.filtri summary {
+  font: 700 17px "Libre Baskerville", Georgia, serif;
+  cursor: pointer;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--filo);
+  list-style: none;
+}
+.filtri summary::-webkit-details-marker { display: none; }
+.filtri label { display: block; font-size: 13px; color: var(--tenue); margin-top: 14px; }
+.filtri input[type=search], .filtri input[type=number], .filtri select {
+  display: block; width: 100%; margin-top: 4px; padding: 9px 10px;
+  font: inherit; font-size: 16px; color: var(--inchiostro);
+  background: var(--campo); border: 1px solid var(--filo); border-radius: 2px;
+}
+.filtri label.spunta { display: flex; gap: 8px; align-items: center; color: var(--inchiostro); font-size: 15px; }
+.filtri label.spunta input { width: 18px; height: 18px; accent-color: var(--mattone); }
+
+#fonti { margin-top: 28px; }
+#fonti summary { font: 700 17px "Libre Baskerville", Georgia, serif; cursor: pointer; padding: 10px 0; border-bottom: 1px solid var(--filo); list-style: none; }
+#fonti summary::-webkit-details-marker { display: none; }
+.fonti { list-style: none; margin: 0; padding: 0; }
+.fonti li { padding: 10px 0; border-bottom: 1px solid var(--filo); font-size: 14px; }
+.fonti strong { display: block; font-weight: 600; }
+.fonti .meta { display: block; margin-top: 1px; }
+.fonti li.guasta strong { color: var(--mattone); }
+
+.elenco { list-style: none; margin: 0; padding: 0; }
+main { margin-top: 18px; }
+@media (min-width: 860px) { main { margin-top: 0; } }
+.riga {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid var(--filo);
+}
+.riga.nascosto { opacity: .45; }
+.foto { width: 96px; height: 96px; object-fit: cover; background: var(--filo); display: block; }
+.titolo {
+  font: 700 16px/1.3 "Libre Baskerville", Georgia, serif;
+  color: var(--inchiostro);
+  text-decoration: none;
+  display: block;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+.titolo:hover { text-decoration: underline; text-decoration-color: var(--mattone); }
+.prezzo { font-weight: 600; font-size: 17px; }
+.prezzo small { font-weight: 400; color: var(--tenue); font-size: 13px; }
+.meta { color: var(--tenue); font-size: 13.5px; margin-top: 2px; }
+.rarita { color: var(--mattone); font-weight: 600; }
+.affare { color: var(--verde); font-weight: 600; }
+.attenzione { color: var(--mattone); font-size: 13.5px; margin-top: 4px; }
+.azioni { margin-top: 8px; display: flex; gap: 18px; }
+.azioni button {
+  font: inherit; font-size: 13.5px; color: var(--inchiostro); background: none;
+  border: 0; border-bottom: 1px solid var(--filo); padding: 2px 0; cursor: pointer;
+}
+.azioni button[aria-pressed=true] { border-bottom-color: var(--mattone); color: var(--mattone); }
+.vuoto { padding: 40px 0; color: var(--tenue); max-width: 36em; }
+
+@media (min-width: 860px) {
+  .testata { padding-top: 40px; }
+  h1 { font-size: 40px; }
+  .corpo { display: grid; grid-template-columns: 250px 1fr; gap: 64px; align-items: start; padding-top: 24px; }
+  .filtri { position: sticky; top: 24px; }
+  .filtri summary { pointer-events: none; }
+  .riga { grid-template-columns: 148px 1fr; gap: 24px; padding: 22px 0; }
+  .foto { width: 148px; height: 148px; }
+  .titolo { font-size: 18px; }
+  .prezzo { font-size: 19px; }
+}
