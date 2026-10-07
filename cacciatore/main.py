@@ -30,8 +30,10 @@ NOMI_PAESI = {
     "LU": "Lussemburgo", "CY": "Cipro", "MT": "Malta", "CH": "Svizzera", "NO": "Norvegia",
     "TR": "Turchia", "KR": "Corea del Sud", "TW": "Taiwan", "CA": "Canada", "AU": "Australia",
     "RS": "Serbia", "UA": "Ucraina", "RU": "Russia", "BY": "Bielorussia",
+    "ID": "Indonesia", "ZA": "Sudafrica", "VN": "Vietnam", "TH": "Thailandia", "MY": "Malesia",
+    "SG": "Singapore", "PH": "Filippine", "NZ": "Nuova Zelanda",
 }
-MAX_ARCHIVIO = 3000
+MAX_ARCHIVIO = 4000
 SLOT_MINUTI = 30
 
 
@@ -50,20 +52,27 @@ def carica_json(percorso, predefinito):
 
 
 def piano_ricerche(cfg, adesso):
-    """Elenco delle chiamate eBay da fare in questa esecuzione, a rotazione."""
+    """Elenco delle chiamate eBay da fare in questa esecuzione, a rotazione.
+
+    I paesi vicini (cfg["paesi"]) e quelli lontani (cfg["paesi_lontani"], con più dogana e più rischio) ruotano
+    separatamente: i lontani hanno una quota fissa di chiamate e solo i gruppi che non hanno lontani: false.
+    """
     esclusi = set(cfg["generale"].get("paesi_esclusi", []))
-    completo = [
-        (i, paese, mkt)
-        for i in range(len(cfg["ricerche"]))
-        for paese, mkt in cfg["paesi"].items()
-        if paese not in esclusi
-    ]
-    if not completo:
-        return []
-    budget = min(cfg["generale"]["chiamate_per_esecuzione"], len(completo))
+    gruppi = cfg["ricerche"]
+    vicini = [(i, p, m) for i in range(len(gruppi)) for p, m in cfg["paesi"].items() if p not in esclusi]
+    lontani = [(i, p, m) for i in range(len(gruppi)) if gruppi[i].get("lontani", True)
+               for p, m in cfg.get("paesi_lontani", {}).items() if p not in esclusi]
+    totale = cfg["generale"]["chiamate_per_esecuzione"]
+    quota = min(int(cfg["generale"].get("quota_lontani", 0)), totale) if lontani else 0
     slot = int(adesso.timestamp() // (SLOT_MINUTI * 60))
-    inizio = (slot * budget) % len(completo)
-    return [completo[(inizio + k) % len(completo)] for k in range(budget)]
+    piano = []
+    for elenco, budget in ((vicini, totale - quota), (lontani, quota)):
+        if not elenco or budget <= 0:
+            continue
+        budget = min(budget, len(elenco))
+        inizio = (slot * budget) % len(elenco)
+        piano += [elenco[(inizio + k) % len(elenco)] for k in range(budget)]
+    return piano
 
 
 def elabora(a, gruppo, valutatore, tassi, cfg):
@@ -78,7 +87,7 @@ def elabora(a, gruppo, valutatore, tassi, cfg):
     a["ricerca_salvata"] = bool(gruppo.get("ricerca_salvata"))
     if principale:
         a["chiave_mercato"] = f"{principale}|{a['tipo']}"
-    elif a.get("tipo_fonte") == "negozio":
+    elif a.get("tipo_fonte") == "negozio" or gruppo.get("classico"):
         a["chiave_mercato"] = None  # senza un modello riconosciuto non c'è un mercato con cui confrontare
     else:
         a["chiave_mercato"] = f"{gruppo['nome']}|{a['tipo']}"
@@ -158,7 +167,7 @@ def da_avvisare(a, cfg):
     return motivi
 
 
-def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte=None):
+def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte=None, ebay_nota=None):
     dati = carica_json(percorso_dati, {"items": []})
     archivio = {a["id"]: a for a in dati.get("items", [])}
     valutatore = Valutatore(cfg)
@@ -188,30 +197,46 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
         archivio[a["id"]] = a
         toccati.append(a["id"])
 
-    errori = 0
+    stato = dict(dati.get("stato_fonti", {}))
+    errori, riuscite, ricevuti, ultimo_errore = 0, 0, 0, None
     piano = piano_ricerche(cfg, adesso) if cerca_ebay else []
     for idx, paese, mkt in piano:
         gruppo = cfg["ricerche"][idx]
         try:
             grezzi = cerca_ebay(gruppo["q"], mkt, paese)
+        except mod_ebay.ErroreAutEbay as e:
+            errori += 1
+            ultimo_errore = str(e)
+            log.error("eBay non accetta le chiavi, mi fermo: %s", e)
+            break
         except Exception as e:  # noqa: BLE001
             errori += 1
+            ultimo_errore = str(e)
             log.error("Ricerca fallita (%s, %s): %s", gruppo["nome"], paese, e)
-            if errori >= 5:
+            if (errori >= 5 and not riuscite) or errori >= 15:
                 log.error("Troppi errori, mi fermo per questa esecuzione.")
                 break
             continue
+        riuscite += 1
+        ricevuti += len(grezzi)
         for g in grezzi:
             acquisisci(mod_ebay.normalizza_annuncio(g, mkt), gruppo)
+    if piano:
+        prec = stato.get("eBay", {})
+        stato["eBay"] = {"controllato": iso(adesso), "ok": riuscite > 0, "errore": (ultimo_errore or "")[:300] or None,
+                         "ultimo_ok": iso(adesso) if riuscite else prec.get("ultimo_ok"), "iniziale": True,
+                         "trovati": ricevuti, "ricerche": riuscite, "ricerche_fallite": errori}
+    elif ebay_nota:
+        stato["eBay"] = {"controllato": iso(adesso), "ok": False, "errore": ebay_nota, "trovati": 0,
+                         "ultimo_ok": stato.get("eBay", {}).get("ultimo_ok")}
 
-    stato = dict(dati.get("stato_fonti", {}))
     if scarica_fonte:
         for f in cfg.get("fonti", []):
             if not f.get("attivo", True):
                 continue
             nome = f["nome"]
             prec = stato.get(nome, {})
-            if prec.get("controllato"):
+            if prec.get("controllato") and prec.get("ok", True):  # una fonte in errore si riprova a ogni giro
                 trascorso = adesso - datetime.strptime(prec["controllato"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                 if trascorso < timedelta(minutes=f.get("ogni_minuti", 120)):
                     continue
@@ -300,13 +325,13 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
             del archivio[id_]
     elenco = sorted(archivio.values(), key=lambda a: a["primo_visto"], reverse=True)
     if len(elenco) > MAX_ARCHIVIO:
-        elenco = sorted(elenco, key=lambda a: (a["punteggio"], a["primo_visto"]), reverse=True)[:MAX_ARCHIVIO]
+        elenco = sorted(elenco, key=lambda a: (bool(a.get("affare")), a["punteggio"], a["primo_visto"]), reverse=True)[:MAX_ARCHIVIO]
         elenco.sort(key=lambda a: a["primo_visto"], reverse=True)
 
     for a in elenco:
         a.pop("motivi_avviso", None)
 
-    configurate = {f["nome"] for f in cfg.get("fonti", [])}
+    configurate = {f["nome"] for f in cfg.get("fonti", [])} | {"eBay"}
     uscita = {
         "aggiornato": iso(adesso),
         "nomi_paesi": NOMI_PAESI,
@@ -331,6 +356,7 @@ def main(argv=None):
 
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     adesso = datetime.now(timezone.utc)
+    ebay_nota = None
 
     if args.fixture:
         grezzi = json.loads(Path(args.fixture).read_text(encoding="utf-8"))
@@ -356,6 +382,8 @@ def main(argv=None):
                                     gen.get("risultati_per_chiamata", 50))
         else:
             log.warning("Mancano EBAY_CLIENT_ID e EBAY_CLIENT_SECRET: salto eBay, leggo solo le altre fonti.")
+            ebay_nota = ("mancano i secret EBAY_CLIENT_ID ed EBAY_CLIENT_SECRET: devono stare in Secrets and variables, "
+                         "scheda Secrets, con questi nomi esatti")
 
         cerca_allegro = None
         if os.environ.get("ALLEGRO_CLIENT_ID") and os.environ.get("ALLEGRO_CLIENT_SECRET"):
@@ -374,7 +402,7 @@ def main(argv=None):
         def scarica_fonte(f):
             return mod_negozi.scarica(f, rete)
 
-    esegui(cfg, args.dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte)
+    esegui(cfg, args.dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte, ebay_nota)
     return 0
 
 
