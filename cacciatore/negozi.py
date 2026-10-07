@@ -6,12 +6,20 @@ Ogni sito si descrive in config.yaml sotto "fonti" con un tipo di lettura:
   jsonld       pagine di elenco con dati strutturati schema.org (Product o ItemList)
   rss          feed RSS o Atom, per forum e bacheche di annunci
   html         pagine di elenco lette con selettori CSS scritti da te
+  etsy         API ufficiale di Etsy, con la tua chiave personale
+  email        le mail di "ricerca salvata" che Subito, Vinted ecc. mandano a te
 
 Prima di ogni richiesta Rete controlla robots.txt: se il sito non vuole, non si scarica nulla.
 """
+import email as modulo_email
+import email.policy
+import hashlib
+import imaplib
 import json
 import logging
+import os
 import re
+from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin
 
@@ -327,12 +335,214 @@ def leggi_html(fonte, rete):
     return list(voci.values()), True
 
 
+# ------------------------------------------------------------------- Etsy
+ETSY_API = "https://openapi.etsy.com/v3/application/listings/active"
+
+
+def _paese_etsy(annuncio):
+    """Paese di spedizione del venditore, se l'API lo fornisce (profilo di spedizione o negozio)."""
+    for nodo in (annuncio.get("shipping_profile"), annuncio.get("shop"), annuncio):
+        if isinstance(nodo, dict):
+            for chiave in ("origin_country_iso", "ships_from_country_iso", "country_iso"):
+                v = nodo.get(chiave)
+                if isinstance(v, str) and len(v) == 2:
+                    return v.upper()
+    return None
+
+
+def _prezzo_etsy(p):
+    if isinstance(p, dict):
+        try:
+            return float(p["amount"]) / float(p.get("divisor") or 100), p.get("currency_code")
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            return None, None
+    return parse_prezzo(p), None
+
+
+def leggi_etsy(fonte, rete):
+    """Cerca per parole chiave con l'API ufficiale v3. Serve una chiave personale di Etsy."""
+    chiave = os.environ.get("ETSY_API_KEY", "").strip()
+    segreto = os.environ.get("ETSY_API_SECRET", "").strip()
+    if not chiave:
+        raise ErroreRete("mancano i secret ETSY_API_KEY (e ETSY_API_SECRET): crea la chiave su etsy.com/developers")
+    intestazioni = {"x-api-key": f"{chiave}:{segreto}" if segreto else chiave}
+    per_pagina = 100
+    voci, letti, senza_paese = {}, 0, 0
+    scarta_ignoti = fonte.get("paese_ignoto", "scarta") == "scarta"
+    for frase in fonte["parole"]:
+        for pagina in range(int(fonte.get("max_pagine", 1))):
+            parametri = {"keywords": frase, "limit": per_pagina, "offset": pagina * per_pagina,
+                         "sort_on": "created", "sort_order": "desc", "includes": "Images,Shipping"}
+            try:
+                dati = rete.get(ETSY_API, parametri, intestazioni=intestazioni, robots=False).json()
+            except ErroreRete as e:
+                if "401" in str(e) or "403" in str(e):
+                    raise ErroreRete("Etsy rifiuta la chiave (errata, o ancora in attesa di approvazione)") from e
+                if not voci and letti == 0:
+                    raise
+                log.warning("Etsy, ricerca «%s» pagina %d non letta: %s", frase, pagina + 1, e)
+                break
+            risultati = dati.get("results") or []
+            letti += len(risultati)
+            for r in risultati:
+                if r.get("state") not in (None, "active"):
+                    continue
+                url = (r.get("url") or "").split("?")[0]
+                prezzo, valuta = _prezzo_etsy(r.get("price"))
+                if not https(url) or prezzo is None or not r.get("listing_id"):
+                    continue
+                paese = _paese_etsy(r) or fonte.get("paese")
+                if paese is None and scarta_ignoti:
+                    senza_paese += 1
+                    continue
+                immagini = r.get("images") or []
+                im = (immagini[0].get("url_570xN") or immagini[0].get("url_fullxfull")) if immagini else None
+                ts = r.get("original_creation_timestamp") or r.get("creation_timestamp")
+                pubblicato = None
+                if isinstance(ts, (int, float)):
+                    pubblicato = datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                v = _voce(fonte, str(r["listing_id"]), r.get("title"), url, prezzo,
+                          valuta or fonte.get("valuta", "EUR"), immagine=https(im), pubblicato=pubblicato)
+                v["paese"] = paese
+                voci[v["id"]] = v
+            if len(risultati) < per_pagina:
+                break
+    if letti and not voci and senza_paese:
+        raise ErroreRete("Etsy non indica il paese del venditore: scartati tutti gli annunci. "
+                         "Se vuoi vederli lo stesso, metti paese_ignoto: tieni nella fonte")
+    if senza_paese:
+        log.warning("Etsy: %d annunci scartati perché il paese del venditore non è indicato.", senza_paese)
+    return list(voci.values()), False  # una ricerca per parole non è un catalogo: niente rimozione dei venduti
+
+
+# ------------------------------------------------------------- Email (IMAP)
+PREZZO_TESTO = re.compile(r"(?:€|eur)\s?\d[\d.,]*|\d[\d.,]*\s?(?:€|eur)", re.I)
+LINK_DA_SALTARE = re.compile(r"unsubscribe|disiscri|preferenz|privacy|cookie|mailto:|/help|assistenza|termini|facebook|instagram|apple\.com|google\.com/store", re.I)
+TLD_PAESI = {"it": "IT", "fr": "FR", "de": "DE", "es": "ES", "pl": "PL", "cz": "CZ", "lt": "LT", "nl": "NL",
+             "be": "BE", "at": "AT", "pt": "PT", "sk": "SK", "hu": "HU", "ro": "RO", "hr": "HR", "gr": "GR",
+             "se": "SE", "dk": "DK", "fi": "FI", "uk": "GB"}
+
+
+def _paese_da_dominio(url):
+    host = re.sub(r"^https?://", "", url).split("/")[0].lower()
+    if host.endswith(".co.uk"):
+        return "GB"
+    return TLD_PAESI.get(host.rsplit(".", 1)[-1])
+
+
+def estrai_da_html(html, fonte):
+    """Trova gli annunci in una mail: ogni link all'annuncio con titolo, prezzo e foto nello stesso blocco."""
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    filtro = re.compile(fonte["link"]) if fonte.get("link") else None
+    trovati = {}
+    for a in soup.find_all("a", href=True):
+        url = a["href"].strip()
+        if not url.startswith("https://") or LINK_DA_SALTARE.search(url):
+            continue
+        if filtro and not filtro.search(url):
+            continue
+        blocco = a
+        for _ in range(7):
+            if PREZZO_TESTO.search(blocco.get_text(" ", strip=True)):
+                break
+            if blocco.parent is None:
+                break
+            blocco = blocco.parent
+        testo_blocco = blocco.get_text(" ", strip=True)
+        m = PREZZO_TESTO.search(testo_blocco)
+        if not m:
+            continue
+        # un blocco con più annunci diversi non è affidabile per questo link: si resta al link stesso
+        titolo = a.get_text(" ", strip=True)
+        if not titolo or PREZZO_TESTO.fullmatch(titolo):
+            img_alt = (a.find("img") or {}).get("alt") if a.find("img") else None
+            titolo = img_alt or ""
+        if not titolo:
+            righe = [t.strip() for t in blocco.stripped_strings if not PREZZO_TESTO.search(t) and len(t.strip()) > 3]
+            titolo = righe[0] if righe else ""
+        if len(titolo) < 4:
+            continue
+        immagine = None
+        for im in blocco.find_all("img"):
+            src = im.get("src") or im.get("data-src") or ""
+            try:
+                piccola = int(im.get("width") or 100) <= 5 or int(im.get("height") or 100) <= 5
+            except ValueError:
+                piccola = False
+            if src.startswith("https://") and not piccola and not re.search(r"pixel|track|open\.|logo|icon", src, re.I):
+                immagine = src
+                break
+        chiave = url.split("?")[0] if len(url.split("?")[0].split("//", 1)[-1]) > 20 else url
+        if chiave in trovati:
+            continue
+        trovati[chiave] = {"url": url.split("#")[0], "titolo": titolo, "prezzo": parse_prezzo(m.group(0)),
+                           "valuta": valuta_da_testo(m.group(0), fonte.get("valuta", "EUR")), "immagine": immagine}
+    return list(trovati.values())
+
+
+def leggi_email(fonte, rete):
+    """Legge, in sola lettura, le mail di ricerca salvata arrivate negli ultimi giorni.
+
+    Nessun accesso ai siti: Cacciatore vede solo ciò che i siti mandano a te per mail.
+    """
+    utente = os.environ.get("EMAIL_IMAP_UTENTE", "").strip()
+    password = os.environ.get("EMAIL_IMAP_PASSWORD", "").strip()
+    if not utente or not password:
+        raise ErroreRete("mancano i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD")
+    giorni = int(fonte.get("giorni", 3))
+    dal = (datetime.now(timezone.utc) - timedelta(days=giorni)).strftime("%d-%b-%Y")
+    voci = {}
+    try:
+        casella = imaplib.IMAP4_SSL(fonte.get("server", "imap.gmail.com"), timeout=30)
+        try:
+            casella.login(utente, password)
+            casella.select(fonte.get("cartella", "INBOX"), readonly=True)  # sola lettura: non tocca le mail
+            numeri = set()
+            for mittente in fonte["mittenti"]:
+                stato, risposta = casella.search(None, "SINCE", dal, "FROM", f'"{mittente}"')
+                if stato == "OK" and risposta and risposta[0]:
+                    numeri.update(risposta[0].split())
+            for n in sorted(numeri, key=int)[-int(fonte.get("max_mail", 60)):]:
+                stato, parti = casella.fetch(n, "(BODY.PEEK[])")
+                if stato != "OK" or not parti or not isinstance(parti[0], tuple):
+                    continue
+                msg = modulo_email.message_from_bytes(parti[0][1], policy=modulo_email.policy.default)
+                corpo = msg.get_body(preferencelist=("html",))
+                if corpo is None:
+                    continue
+                data = None
+                try:
+                    data = msg["date"].datetime.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:  # noqa: BLE001
+                    pass
+                for e in estrai_da_html(corpo.get_content(), fonte):
+                    ident = hashlib.sha1(e["url"].split("?")[0].encode()).hexdigest()[:16]
+                    v = _voce(fonte, ident, e["titolo"], e["url"], e["prezzo"], e["valuta"],
+                              immagine=e["immagine"], pubblicato=data)
+                    if fonte.get("paese_da_dominio"):
+                        v["paese"] = _paese_da_dominio(e["url"]) or fonte.get("paese")
+                    voci[v["id"]] = v
+        finally:
+            try:
+                casella.logout()
+            except Exception:  # noqa: BLE001
+                pass
+    except imaplib.IMAP4.error as e:
+        raise ErroreRete(f"accesso alla posta rifiutato ({e}): controlla utente e password per app") from e
+    except OSError as e:
+        raise ErroreRete(f"posta non raggiungibile: {e}") from e
+    return list(voci.values()), False
+
+
 LETTORI = {
     "shopify": leggi_shopify,
     "woocommerce": leggi_woocommerce,
     "jsonld": leggi_jsonld,
     "rss": leggi_rss,
     "html": leggi_html,
+    "etsy": leggi_etsy,
+    "email": leggi_email,
 }
 
 
