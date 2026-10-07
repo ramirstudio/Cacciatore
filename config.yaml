@@ -115,6 +115,51 @@ fonti:
     paese: JP
     valuta: USD
     ogni_minuti: 240
+  # Etsy: API ufficiale con la tua chiave (secret ETSY_API_KEY ed ETSY_API_SECRET). Metti attivo: true quando le hai.
+  - nome: Etsy
+    tipo: etsy
+    attivo: false
+    parole:                       # una chiamata per frase; Etsy non capisce OR né virgolette
+      - vintage lens m42
+      - soviet lens
+      - helios 44
+      - jupiter lens
+      - industar lens
+      - zeiss jena lens
+      - pentacon lens
+      - vintage camera lens adapter
+      - ussr camera
+      - east german camera
+      - japanese vintage lens
+      - vintage rangefinder camera
+    max_pagine: 1
+    paese_ignoto: scarta          # se l'API non dice dove spedisce il venditore, l'annuncio non entra
+    valuta: EUR
+    ogni_minuti: 180
+  # Subito e Vinted: Cacciatore non entra nei loro siti. Legge le mail di "ricerca salvata" che i siti mandano a te.
+  # Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
+  - nome: Subito
+    tipo: email
+    attivo: false
+    mittenti: ["subito.it"]
+    link: "subito\\.it/"          # solo i link che puntano agli annunci
+    giorni: 3
+    paese: IT
+    permetti_paesi: [IT]          # Subito è italiano: l'esclusione dei venditori italiani qui non vale
+    valuta: EUR
+    spedizione_stimata_eur: 8
+    ogni_minuti: 30
+  - nome: Vinted
+    tipo: email
+    attivo: false
+    mittenti: ["vinted"]
+    link: "vinted\\.[a-z.]+/items/"
+    giorni: 3
+    paese_da_dominio: true        # vinted.it -> IT, vinted.fr -> FR ... (è il sito, non per forza il paese del venditore)
+    permetti_paesi: [IT]
+    valuta: EUR
+    spedizione_stimata_eur: 8
+    ogni_minuti: 30
   # Modelli per altri tipi di sito (togli il cancelletto e compila):
   #
   # - nome: Negozio WooCommerce
@@ -177,6 +222,18 @@ negozi:
     - sviluppo
     - battery
     - batteria
+    - necklace
+    - pendant
+    - earrings
+    - bracelet
+    - keychain
+    - lampshade
+    - cufflinks
+    - jewelry
+    - jewellery
+    - candle
+    - ornament
+    - terrarium
     - lens cap
     - cleaning
     - tripod
