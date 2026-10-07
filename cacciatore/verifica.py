@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from . import negozi
+from .ebay import Ebay
 from .main import PAESI_UE
 from .punteggio import Valutatore
 from .rete import ErroreRete, Rete, Vietato
@@ -69,6 +70,31 @@ def controlla(fonte, cfg, rete):
     return esito
 
 
+def controlla_ebay(prova=None):
+    """Una chiamata vera a eBay: dice se le chiavi funzionano e, se no, riporta la risposta di eBay parola per parola."""
+    esito = {"nome": "eBay", "tipo": "api", "url": "", "ok": False, "robots": None, "letti": 0, "rilevanti": 0,
+             "esempi": [], "nota": ""}
+    cid, sec = os.environ.get("EBAY_CLIENT_ID", "").strip(), os.environ.get("EBAY_CLIENT_SECRET", "").strip()
+    if not (cid and sec):
+        esito["nota"] = "i secret EBAY_CLIENT_ID ed EBAY_CLIENT_SECRET non arrivano al programma (nome sbagliato o messi nella scheda Variables)"
+        return esito
+    try:
+        r = prova() if prova else Ebay(cid, sec).prova()
+    except Exception as e:  # noqa: BLE001
+        esito["nota"] = f"eBay non raggiungibile: {e}"
+        return esito
+    if r["token"] != 200:
+        esito["nota"] = f"token rifiutato ({r['token']}): {r['token_testo']}"
+    elif r.get("ricerca") != 200:
+        esito["nota"] = f"token ok, ricerca rifiutata ({r.get('ricerca')}): {r.get('ricerca_testo')}"
+    else:
+        esito["ok"] = True
+        esito["letti"] = r.get("totale") or 0
+        esito["esempi"] = r.get("esempi", [])
+        esito["nota"] = "chiavi accettate, la ricerca risponde"
+    return esito
+
+
 def testo(esiti):
     righe = []
     for e in esiti:
@@ -105,11 +131,13 @@ def main(argv=None):
     args = ap.parse_args(argv)
     cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
     fonti = [f for f in cfg.get("fonti", []) if not args.nome or f["nome"].lower() == args.nome.lower()]
-    if not fonti:
+    solo_ebay = bool(args.nome) and args.nome.lower() == "ebay"
+    if not fonti and not solo_ebay:
         print("Nessuna fonte da controllare.")
         return 1
     rete = Rete(pausa=cfg.get("negozi", {}).get("pausa_secondi", 2.0))
-    esiti = [controlla(f, cfg, rete) for f in fonti]
+    esiti = [controlla_ebay()] if (solo_ebay or not args.nome) else []
+    esiti += [controlla(f, cfg, rete) for f in fonti if f.get("attivo", True) or args.nome]
     print(testo(esiti))
     riassunto = os.environ.get("GITHUB_STEP_SUMMARY")
     if riassunto:
