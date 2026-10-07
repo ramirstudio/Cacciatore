@@ -2,9 +2,10 @@
 
 generale:
   conserva_giorni: 10             # dopo quanti giorni senza vederlo un annuncio sparisce dal sito
-  chiamate_per_esecuzione: 60     # limite eBay: 5.000 chiamate al giorno; 60 x 48 esecuzioni = 2.880
+  chiamate_per_esecuzione: 90     # limite eBay: 5.000 chiamate al giorno; 90 x 48 esecuzioni = 4.320
+  quota_lontani: 25               # di queste 90, quante vanno ai paesi lontani (elenco paesi_lontani)
   max_avvisi_per_esecuzione: 12   # oltre questo numero Telegram riceve un solo messaggio riassuntivo
-  risultati_per_chiamata: 50
+  risultati_per_chiamata: 100
   paesi_esclusi: [IT]             # i venditori italiani non interessano
   consegna_in: IT                 # eBay mostra solo annunci che spediscono qui
   categoria_ebay: "625"           # Fotocamere e foto. Se non esce nulla, lascia vuoto: ""
@@ -38,8 +39,40 @@ paesi:
   JP: EBAY_US
   CN: EBAY_US
   HK: EBAY_US
+  ES: EBAY_ES
+  FR: EBAY_FR
+  PT: EBAY_ES
+  NL: EBAY_NL
+  BE: EBAY_BE
+  IE: EBAY_IE
+  DK: EBAY_DE
+  SE: EBAY_DE
+  FI: EBAY_DE
+  CH: EBAY_CH
+  RS: EBAY_DE
 
-# Stima del costo di importazione dai paesi fuori UE (Regno Unito, Giappone, Cina, Hong Kong).
+# Paesi lontani: dogana, IVA all'importazione e tempi lunghi, ma prezzi spesso più bassi.
+# Hanno una quota fissa di chiamate (quota_lontani) e ricevono solo i gruppi di ricerca per pezzi particolari,
+# non quelli sull'usato comune, dove con spedizione e IVA non conviene quasi mai.
+# eBay non ha siti dedicati a Indonesia, Sudafrica ecc.: si cerca sul sito americano per sede del venditore.
+# In Africa c'è solo il Sudafrica: gli altri paesi sono quasi tutti senza protezione dell'acquirente reale.
+paesi_lontani:
+  AU: EBAY_AU
+  NZ: EBAY_AU
+  US: EBAY_US
+  CA: EBAY_CA
+  KR: EBAY_US
+  TW: EBAY_US
+  TH: EBAY_US
+  MY: EBAY_US
+  SG: EBAY_US
+  PH: EBAY_US
+  VN: EBAY_US
+  ID: EBAY_US
+  ZA: EBAY_US
+  TR: EBAY_DE
+
+# Stima del costo di importazione dai paesi fuori UE (Regno Unito, Svizzera, Giappone, Cina, Australia ecc.).
 importazione:
   iva_importazione: 0.22
   soglia_sdoganamento_eur: 150
@@ -65,10 +98,26 @@ ricerche:
     q: "(anamorphic,widelux,noblex,horizon 202,subminiature,minox,spy camera,stereo camera,panoramic camera,aerial camera)"
   - nome: Classici a buon prezzo
     classico: true                # avviso solo se è un affare, non per il punteggio
+    lontani: false
     q: "(canon ae-1,pentax k1000,olympus om-1,nikon fm2,minolta x-700,yashica fx-3,canon a-1,pentax mx,praktica mtl)"
   - nome: Marche note a prezzo basso
     classico: true                # avviso solo se è un affare
+    lontani: false
     q: "(sony a7,sony a6000,sony a6300,sony rx100,canon eos r,canon 5d,canon 6d,canon 80d,canon g7x,nikon d750,nikon d810,nikon z6,fujifilm x100,fujifilm x-t,panasonic gh5,leica q,olympus e-m)"
+  - nome: Cinepresa e ottiche cine
+    q: "(bolex,arriflex,super 8 camera,16mm camera,c-mount lens,cine lens,kinoptik,speed panchro,beaulieu,eclair)"
+  - nome: Ottiche usate economiche
+    classico: true
+    lontani: false
+    q: "(nikkor,canon fd,minolta rokkor,minolta md,takumar,smc pentax,zuiko,yashica ml,tamron adaptall,sigma 30mm,tokina)"
+  - nome: Reflex e mirrorless usate economiche
+    classico: true
+    lontani: false
+    q: "(canon eos 600d,canon eos 700d,canon eos 800d,canon eos 60d,canon eos 70d,nikon d3300,nikon d5300,nikon d5500,nikon d7000,nikon d7100,nikon d610,pentax k-5,sony nex-6,sony a5100,fujifilm x-e2,fujifilm x-t1,panasonic g7,olympus pen e-pl)"
+  - nome: Compatte e telemetro a buon prezzo
+    classico: true
+    lontani: false
+    q: "(olympus mju,yashica t4,contax t2,ricoh gr1,minolta tc-1,nikon 35ti,leica minilux,konica big mini,pentax espio,canon sure shot,canon autoboy)"
 
 # Negozi e siti di usato, letti direttamente dalle loro pagine pubbliche.
 # Cacciatore legge robots.txt di ogni sito e salta ciò che vieta. Per aggiungere un negozio basta
@@ -315,7 +364,124 @@ punteggio:
     - leica d-lux
     - ricoh gr iii
     - ricoh gr ii
+    - canon ae-1
+    - canon a-1
+    - pentax k1000
+    - pentax mx
+    - olympus om-1
+    - nikon fm2
+    - minolta x-700
+    - yashica fx-3
+    - praktica mtl
+    - nikkor 24mm
+    - nikkor 28mm
+    - nikkor 35mm
+    - nikkor 50mm
+    - nikkor 85mm
+    - nikkor 105mm
+    - nikkor 135mm
+    - nikkor 200mm
+    - canon fd 28mm
+    - canon fd 35mm
+    - canon fd 50mm
+    - canon fd 85mm
+    - canon fd 135mm
+    - canon ef 50mm
+    - canon ef 85mm
+    - canon ef 100mm
+    - canon ef 24-70
+    - canon ef 70-200
+    - canon ef-s 18-55
+    - canon ef-s 17-85
+    - takumar 28mm
+    - takumar 50mm
+    - takumar 55mm
+    - takumar 135mm
+    - minolta rokkor 50mm
+    - minolta md 50mm
+    - minolta md 35mm
+    - minolta md 135mm
+    - rokkor 58mm
+    - zuiko 28mm
+    - zuiko 50mm
+    - zuiko 135mm
+    - yashica ml 50mm
+    - tamron 90mm
+    - tamron 17-50
+    - tamron 70-300
+    - sigma 30mm
+    - sigma 18-35
+    - sigma 50mm
+    - tokina 11-16
+    - canon eos 600d
+    - canon eos 650d
+    - canon eos 700d
+    - canon eos 750d
+    - canon eos 800d
+    - canon eos 1100d
+    - canon eos 1200d
+    - canon eos 200d
+    - canon eos 60d
+    - canon eos 70d
+    - canon eos 7d mark ii
+    - nikon d3200
+    - nikon d3300
+    - nikon d3400
+    - nikon d5100
+    - nikon d5200
+    - nikon d5300
+    - nikon d5500
+    - nikon d7000
+    - nikon d7100
+    - nikon d90
+    - nikon d600
+    - nikon d610
+    - nikon d700
+    - nikon d800
+    - sony nex-5
+    - sony nex-6
+    - sony nex-7
+    - sony a5000
+    - sony a5100
+    - pentax k-5
+    - pentax k-3
+    - pentax k-70
+    - panasonic g7
+    - panasonic gx80
+    - panasonic gx7
+    - panasonic lx100
+    - panasonic g85
+    - olympus pen e-pl
+    - fujifilm x-e1
+    - fujifilm x-e2
+    - fujifilm x-t1
+    - fujifilm x-t20
+    - fujifilm x-pro1
+    - olympus mju ii
+    - olympus mju
+    - olympus stylus epic
+    - yashica t4
+    - contax t2
+    - contax t3
+    - ricoh gr1
+    - ricoh gr1v
+    - minolta tc-1
+    - nikon 35ti
+    - nikon 28ti
+    - leica minilux
+    - konica big mini
+    - pentax espio
+    - canon sure shot
+    - canon autoboy
+    - canon prima
   termini:
+    # cinepresa
+    bolex: 4
+    arriflex: 4
+    kinoptik: 5
+    speed panchro: 6
+    beaulieu: 3
+    eclair: 3
     # fotocamere sovietiche
     zorki: 1
     zorkiy: 1
