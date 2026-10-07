@@ -117,6 +117,8 @@ def leggi_shopify(fonte, rete):
                 raise ValueError(f"{base}{percorso}: la risposta non è JSON ({e})") from e
             for p in prodotti:
                 v = _da_shopify(fonte, base, p)
+                if v and fonte.get("solo_usato") and v["condizione"] != "Used":
+                    continue
                 if v:
                     voci[v["id"]] = v
             if len(prodotti) < per_pagina:
@@ -153,8 +155,10 @@ def leggi_woocommerce(fonte, rete):
     voci, completo = {}, True
     per_pagina = 100
     for pagina in range(1, int(fonte.get("max_pagine", 10)) + 1):
-        r = rete.get(base + "/wp-json/wc/store/v1/products",
-                     params={"per_page": per_pagina, "page": pagina, "orderby": "date", "order": "desc"})
+        parametri = {"per_page": per_pagina, "page": pagina, "orderby": "date", "order": "desc"}
+        if fonte.get("categoria"):
+            parametri["category"] = fonte["categoria"]
+        r = rete.get(base + "/wp-json/wc/store/v1/products", params=parametri)
         prodotti = r.json()
         if not isinstance(prodotti, list):
             raise ValueError(f"{base}: la risposta WooCommerce non è un elenco")
