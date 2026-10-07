@@ -71,7 +71,12 @@ def elabora(a, gruppo, valutatore, tassi, cfg):
     a["tipo"] = tipo_prodotto(a["titolo"])
     a["gruppo"] = gruppo["nome"]
     a["classico"] = bool(gruppo.get("classico"))
-    a["chiave_mercato"] = f"{principale or gruppo['nome']}|{a['tipo']}"
+    if principale:
+        a["chiave_mercato"] = f"{principale}|{a['tipo']}"
+    elif a.get("tipo_fonte") == "negozio":
+        a["chiave_mercato"] = None  # senza un modello riconosciuto non c'è un mercato con cui confrontare
+    else:
+        a["chiave_mercato"] = f"{gruppo['nome']}|{a['tipo']}"
 
     a["prezzo_eur"] = in_euro(a["prezzo"], a["valuta"], tassi)
     sped = in_euro(a["spedizione"], a["valuta_spedizione"] or a["valuta"], tassi)
@@ -109,12 +114,12 @@ def calcola_affari(archivio, cfg):
     av = cfg["avvisi"]
     gruppi = {}
     for a in archivio.values():
-        if a.get("totale_eur") and not a.get("asta"):
+        if a.get("totale_eur") and not a.get("asta") and a.get("chiave_mercato"):
             gruppi.setdefault(a["chiave_mercato"], []).append(a["totale_eur"])
     mediane = {k: statistics.median(v) for k, v in gruppi.items() if len(v) >= av["affare_minimo_annunci"]}
     for a in archivio.values():
         a["affare"], a["rapporto_mediana"] = False, None
-        m = mediane.get(a.get("chiave_mercato"))
+        m = mediane.get(a.get("chiave_mercato")) if a.get("chiave_mercato") else None
         if m and a.get("totale_eur") and not a.get("asta"):
             rapporto = a["totale_eur"] / m
             a["rapporto_mediana"] = round(rapporto, 2)
@@ -165,7 +170,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
             if valutatore.da_scartare_negozio(a["titolo"]):
                 return
         a = elabora(a, gruppo, valutatore, tassi, cfg)
-        if negozio and a["tipo"] == "altro" and a["punteggio"] < 1:
+        if negozio and a["tipo"] == "altro" and a["punteggio"] < 1 and not a["motivi"]:
             return
         vecchio = archivio.get(a["id"], {})
         a["primo_visto"] = vecchio.get("primo_visto", iso(adesso))
