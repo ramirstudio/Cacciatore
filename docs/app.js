@@ -30,7 +30,9 @@
     return Math.round(ore / 24) + " giorni fa";
   }
   var PAESI_BASE = { FI: "Finlandia", SE: "Svezia", DK: "Danimarca", IE: "Irlanda", PT: "Portogallo", LU: "Lussemburgo",
-    CH: "Svizzera", NO: "Norvegia", TR: "Turchia", KR: "Corea del Sud", TW: "Taiwan", CA: "Canada", AU: "Australia" };
+    CH: "Svizzera", NO: "Norvegia", TR: "Turchia", KR: "Corea del Sud", TW: "Taiwan", CA: "Canada", AU: "Australia",
+    ID: "Indonesia", ZA: "Sudafrica", VN: "Vietnam", TH: "Thailandia", MY: "Malesia", SG: "Singapore", PH: "Filippine",
+    NZ: "Nuova Zelanda", ES: "Spagna", FR: "Francia", PT: "Portogallo", NL: "Paesi Bassi", BE: "Belgio", RS: "Serbia", US: "Stati Uniti" };
   function paese(codice) { return dati.nomi_paesi[codice] || PAESI_BASE[codice] || codice || "paese non indicato"; }
 
   function popolaPaesi() {
@@ -61,8 +63,9 @@
       var li = nodo("li", s.ok ? "" : "guasta");
       li.appendChild(nodo("strong", null, n));
       var riga = s.ok
-        ? s.trovati + " prodotti letti, " + (conteggio[n] || 0) + " rilevanti, controllata " + fa(s.controllato)
+        ? s.trovati + (n === "eBay" ? " annunci ricevuti nell'ultimo giro, " : " prodotti letti, ") + (conteggio[n] || 0) + " in elenco, controllata " + fa(s.controllato)
         : "non leggibile: " + (s.errore || "errore sconosciuto") + (s.ultimo_ok ? ". Ultima lettura riuscita " + fa(s.ultimo_ok) : "");
+      if (s.ok && s.errore && n === "eBay") riga += ". Alcune ricerche in errore: " + s.errore;
       li.appendChild(nodo("span", "meta", riga));
       el["elenco-fonti"].appendChild(li);
     });
