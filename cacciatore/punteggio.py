@@ -38,6 +38,10 @@ class Valutatore:
             k = _chiave(t)
             if k not in unici or int(w) > unici[k][1]:
                 unici[k] = (t, int(w))
+        for t in p.get("comuni", []):
+            k = _chiave(t)
+            if k not in unici:
+                unici[k] = (t, 0)  # modello diffuso: serve a confrontare i prezzi, non dà punteggio
         self.termini = [(t, w, _regex(t)) for t, w in unici.values()]
         self.escludi = [_regex(x) for x in p.get("escludi", [])]
         self.sospetti = [(x, _regex(x)) for x in p.get("sospetti", [])]
