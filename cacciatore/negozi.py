@@ -169,8 +169,8 @@ def _da_shopify(fonte, base, p):
 def leggi_woocommerce(fonte, rete):
     base = fonte["url"].rstrip("/")
     voci, completo = {}, True
-    per_pagina = 100
-    for pagina in range(1, int(fonte.get("max_pagine", 10)) + 1):
+    per_pagina = int(fonte.get("per_pagina", 40))  # pagine piccole: i server WordPress lenti vanno in timeout con 100
+    for pagina in range(1, int(fonte.get("max_pagine", 15)) + 1):
         parametri = {"per_page": per_pagina, "page": pagina, "orderby": "date", "order": "desc"}
         if fonte.get("categoria"):
             parametri["category"] = fonte["categoria"]
