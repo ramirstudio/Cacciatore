@@ -22,7 +22,7 @@ class ErroreRete(Exception):
 
 
 class Rete:
-    def __init__(self, pausa=2.0, timeout=30, max_byte=15_000_000, sessione=None):
+    def __init__(self, pausa=2.0, timeout=45, max_byte=15_000_000, sessione=None):
         self.pausa = pausa
         self.timeout = timeout
         self.max_byte = max_byte
@@ -84,6 +84,9 @@ class Rete:
             try:
                 r = self.s.get(url, timeout=self.timeout, headers=intestazioni)
             except requests.RequestException as e:
+                if tentativo == 0:  # un solo nuovo tentativo per timeout e cadute di connessione
+                    time.sleep(3)
+                    continue
                 raise ErroreRete(f"{url}: {e}") from e
             if r.status_code in (429, 503) and tentativo == 0:
                 try:
