@@ -22,12 +22,13 @@ from .rete import ErroreRete, Rete, Vietato
 def controlla(fonte, cfg, rete):
     esito = {"nome": fonte["nome"], "tipo": fonte.get("tipo"), "url": fonte.get("url"), "ok": False,
              "robots": None, "letti": 0, "rilevanti": 0, "esempi": [], "nota": ""}
-    base = fonte["url"].rstrip("/")
-    try:
-        esito["robots"] = rete.permesso(base + "/")
-    except Exception as e:  # noqa: BLE001
-        esito["nota"] = f"robots.txt non letto: {e}"
-        return esito
+    base = (fonte.get("url") or "").rstrip("/")
+    if fonte.get("tipo") not in ("etsy", "email"):  # API ufficiale e posta: nessun robots.txt di mezzo
+        try:
+            esito["robots"] = rete.permesso(base + "/")
+        except Exception as e:  # noqa: BLE001
+            esito["nota"] = f"robots.txt non letto: {e}"
+            return esito
     try:
         voci, completo = negozi.scarica(fonte, rete)
     except Vietato:
@@ -49,12 +50,12 @@ def controlla(fonte, cfg, rete):
     esclusi = set(cfg["generale"].get("paesi_esclusi", []))
     rilevanti = []
     for v in voci:
-        if v["paese"] in esclusi or val.da_scartare(v["titolo"]) or val.da_scartare_negozio(v["titolo"]):
+        if (v["paese"] in esclusi and v["paese"] not in fonte.get("permetti_paesi", [])) or val.da_scartare(v["titolo"]) or val.da_scartare_negozio(v["titolo"]):
             continue
         if v.get("nuovo") and fonte.get("escludi_nuovo", True):
             continue
         punteggio, _, _ = val.valuta(v["titolo"])
-        if punteggio < 1:
+        if punteggio < 1 and fonte.get("tipo") != "email":
             continue
         rilevanti.append((punteggio, v))
     rilevanti.sort(key=lambda x: -x[0])
@@ -73,7 +74,10 @@ def testo(esiti):
     for e in esiti:
         stato = "ok" if e["ok"] else "NON FUNZIONA"
         righe.append(f"{e['nome']} ({e['tipo']}): {stato}")
-        righe.append(f"  robots.txt: {'permette' if e['robots'] else 'vieta o non raggiungibile'}")
+        if e["robots"] is None:
+            righe.append("  robots.txt: non si applica (API ufficiale o posta)")
+        else:
+            righe.append(f"  robots.txt: {'permette' if e['robots'] else 'vieta o non raggiungibile'}")
         if e["ok"]:
             righe.append(f"  prodotti letti: {e['letti']}, rilevanti dopo i filtri: {e['rilevanti']}")
             for x in e["esempi"]:
