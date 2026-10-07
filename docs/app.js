@@ -15,7 +15,7 @@
   var nascosti = new Set(leggi(CHIAVE_NASC));
 
   var el = {};
-  ["stato", "fonti", "elenco-fonti", "elenco", "vuoto", "conteggio", "pannello", "f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita",
+  ["stato", "tema", "v-elenco", "v-griglia", "fonti", "elenco-fonti", "elenco", "vuoto", "conteggio", "pannello", "f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita",
    "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
     .forEach(function (id) { el[id] = document.getElementById(id); });
 
@@ -187,7 +187,34 @@
     }
   }
 
+  var CHIAVE_VISTA = "cacciatore.vista", CHIAVE_TEMA = "cacciatore.tema";
+  function salvaTesto(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage non disponibile */ } }
+  function leggiTesto(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+
+  function impostaVista(v) {
+    el.elenco.classList.toggle("griglia", v === "griglia");
+    el["v-griglia"].setAttribute("aria-pressed", v === "griglia");
+    el["v-elenco"].setAttribute("aria-pressed", v !== "griglia");
+    salvaTesto(CHIAVE_VISTA, v);
+  }
+  function temaCorrente() {
+    var t = document.documentElement.getAttribute("data-theme");
+    if (t) return t;
+    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+  function alternaTema() {
+    var nuovo = temaCorrente() === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", nuovo);
+    salvaTesto(CHIAVE_TEMA, nuovo);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute("content", nuovo === "dark" ? "#121315" : "#f2f3f4");
+  }
+
   function avvia() {
+    impostaVista(leggiTesto(CHIAVE_VISTA) === "griglia" ? "griglia" : "elenco");
+    el["v-elenco"].addEventListener("click", function () { impostaVista("elenco"); });
+    el["v-griglia"].addEventListener("click", function () { impostaVista("griglia"); });
+    el.tema.addEventListener("click", alternaTema);
     el.pannello.open = el.fonti.open = window.matchMedia("(min-width: 860px)").matches;
     ["f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita", "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
       .forEach(function (id) { el[id].addEventListener("input", disegna); });
