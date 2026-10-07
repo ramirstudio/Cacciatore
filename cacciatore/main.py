@@ -26,6 +26,10 @@ NOMI_PAESI = {
     "LT": "Lituania", "GR": "Grecia", "DE": "Germania", "AT": "Austria", "GB": "Regno Unito",
     "JP": "Giappone", "CN": "Cina", "HK": "Hong Kong", "FR": "Francia", "ES": "Spagna",
     "NL": "Paesi Bassi", "BE": "Belgio", "IT": "Italia", "US": "Stati Uniti",
+    "FI": "Finlandia", "SE": "Svezia", "DK": "Danimarca", "IE": "Irlanda", "PT": "Portogallo",
+    "LU": "Lussemburgo", "CY": "Cipro", "MT": "Malta", "CH": "Svizzera", "NO": "Norvegia",
+    "TR": "Turchia", "KR": "Corea del Sud", "TW": "Taiwan", "CA": "Canada", "AU": "Australia",
+    "RS": "Serbia", "UA": "Ucraina", "RU": "Russia", "BY": "Bielorussia",
 }
 MAX_ARCHIVIO = 3000
 SLOT_MINUTI = 30
@@ -71,6 +75,7 @@ def elabora(a, gruppo, valutatore, tassi, cfg):
     a["tipo"] = tipo_prodotto(a["titolo"])
     a["gruppo"] = gruppo["nome"]
     a["classico"] = bool(gruppo.get("classico"))
+    a["ricerca_salvata"] = bool(gruppo.get("ricerca_salvata"))
     if principale:
         a["chiave_mercato"] = f"{principale}|{a['tipo']}"
     elif a.get("tipo_fonte") == "negozio":
@@ -135,6 +140,8 @@ def da_avvisare(a, cfg):
     motivi = []
     if not a["classico"] and a["punteggio"] >= av["soglia_punteggio"]:
         motivi.append(f"Pezzo particolare, punteggio {a['punteggio']}/10: {', '.join(a['motivi'])}")
+    if a.get("ricerca_salvata"):
+        motivi.append("Nuovo risultato di una tua ricerca salvata")
     if a["affare"]:
         motivi.append(
             f"Affare: costa il {round(a['rapporto_mediana'] * 100)}% della mediana "
@@ -162,7 +169,8 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
     def acquisisci(a, gruppo, negozio=False):
         if not a["url"].startswith("https://") or a.get("prezzo") is None:
             return
-        if a["paese"] in esclusi or valutatore.da_scartare(a["titolo"]):
+        if (a["paese"] in esclusi and a["paese"] not in gruppo.get("permetti_paesi", [])) \
+                or valutatore.da_scartare(a["titolo"]):
             return
         if negozio:
             if a.get("nuovo") and gruppo.get("escludi_nuovo", True):
@@ -170,7 +178,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
             if valutatore.da_scartare_negozio(a["titolo"]):
                 return
         a = elabora(a, gruppo, valutatore, tassi, cfg)
-        if negozio and a["tipo"] == "altro" and a["punteggio"] < 1 and not a["motivi"]:
+        if negozio and not gruppo.get("ricerca_salvata") and a["tipo"] == "altro" and a["punteggio"] < 1 and not a["motivi"]:
             return
         vecchio = archivio.get(a["id"], {})
         a["primo_visto"] = vecchio.get("primo_visto", iso(adesso))
@@ -214,6 +222,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                 stato[nome] = {**prec, "controllato": iso(adesso), "ok": False, "errore": str(e)[:200]}
                 continue
             gruppo = {"nome": nome, "classico": f.get("classico", False), "escludi_nuovo": f.get("escludi_nuovo", True),
+                      "permetti_paesi": f.get("permetti_paesi", []), "ricerca_salvata": f.get("tipo") == "email" or f.get("ricerca_salvata", False),
                       "spedizione_stimata_eur": f.get("spedizione_stimata_eur", cfg["importazione"].get("spedizione_stimata_eur", 25))}
             prima = len(toccati)
             for v in voci:
