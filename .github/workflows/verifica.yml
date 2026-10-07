@@ -15,4 +15,9 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Prova delle fonti
+        env:
+          ETSY_API_KEY: ${{ secrets.ETSY_API_KEY }}
+          ETSY_API_SECRET: ${{ secrets.ETSY_API_SECRET }}
+          EMAIL_IMAP_UTENTE: ${{ secrets.EMAIL_IMAP_UTENTE }}
+          EMAIL_IMAP_PASSWORD: ${{ secrets.EMAIL_IMAP_PASSWORD }}
         run: python -m cacciatore.verifica
