@@ -1,21 +1,23 @@
 :root {
-  --carta: #f3eee4;
-  --inchiostro: #211d18;
-  --tenue: #6d655a;
-  --filo: #d8d0c0;
-  --mattone: #9a3b1c;
-  --verde: #2e5a3a;
-  --campo: #fbf8f1;
+  --carta: #f2f3f4;
+  --pannello: #fafafa;
+  --inchiostro: #17181a;
+  --tenue: #63676d;
+  --filo: #d5d8db;
+  --mattone: #c8201a;
+  --verde: #1f6b4a;
+  --campo: #ffffff;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --carta: #1c1915;
-    --inchiostro: #ece5d8;
-    --tenue: #a69d8d;
-    --filo: #38322a;
-    --mattone: #d9825f;
-    --verde: #86b595;
-    --campo: #26221c;
+    --carta: #161718;
+    --pannello: #1c1d1f;
+    --inchiostro: #eceef0;
+    --tenue: #9a9fa6;
+    --filo: #34363a;
+    --mattone: #ec4a40;
+    --verde: #6fc29a;
+    --campo: #202225;
   }
 }
 * { box-sizing: border-box; }
@@ -27,6 +29,7 @@ body {
   font: 400 16px/1.45 "IBM Plex Sans", Georgia, serif;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
+body { border-top: 4px solid var(--mattone); }
 .testata { padding: 22px 18px 6px; max-width: 1180px; margin: 0 auto; }
 h1 {
   font: 700 28px/1.1 "Libre Baskerville", Georgia, serif;
@@ -41,7 +44,7 @@ h1 {
   font: 700 17px "Libre Baskerville", Georgia, serif;
   cursor: pointer;
   padding: 10px 0;
-  border-bottom: 1px solid var(--filo);
+  border-bottom: 2px solid var(--inchiostro);
   list-style: none;
 }
 .filtri summary::-webkit-details-marker { display: none; }
@@ -89,7 +92,7 @@ main { margin-top: 18px; }
 .meta { color: var(--tenue); font-size: 13.5px; margin-top: 2px; }
 .rarita { color: var(--mattone); font-weight: 600; }
 .affare { color: var(--verde); font-weight: 600; }
-.attenzione { color: var(--mattone); font-size: 13.5px; margin-top: 4px; }
+.attenzione { color: var(--inchiostro); font-size: 13.5px; margin-top: 6px; padding-left: 8px; border-left: 2px solid var(--mattone); }
 .azioni { margin-top: 8px; display: flex; gap: 18px; }
 .azioni button {
   font: inherit; font-size: 13.5px; color: var(--inchiostro); background: none;
