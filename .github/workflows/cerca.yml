@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+    inputs:
+      forza_fonti:
+        description: "Rileggi subito tutti i negozi, senza aspettare le due ore"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -28,6 +33,7 @@ jobs:
 
       - name: Ricerca
         env:
+          CACCIATORE_FORZA: ${{ inputs.forza_fonti && '1' || '' }}
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
