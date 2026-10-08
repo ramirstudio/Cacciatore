@@ -622,8 +622,35 @@ LETTORI = {
 }
 
 
+# ---------------------------------------------------------------- dal PC di casa
+CARTELLA_CASA = os.path.join("docs", "data", "casa")
+
+
+def file_casa(nome, cartella=None):
+    return os.path.join(cartella or CARTELLA_CASA, slug(nome) + ".json")
+
+
+def leggi_da_casa(fonte, rete=None):
+    """Fonti che bloccano i server di GitHub (MPB): le legge il PC di casa (python -m cacciatore.casa)
+    e le deposita nel repository; qui si prende l'ultimo file arrivato."""
+    percorso = fonte.get("file_casa") or file_casa(fonte["nome"])
+    if not os.path.exists(percorso):
+        raise RuntimeError("il PC di casa non ha ancora mandato dati: avvia CacciatoreCasa sul computer")
+    with open(percorso, encoding="utf-8") as fh:
+        dati = json.load(fh)
+    letto = datetime.strptime(dati["letto"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    ore = (datetime.now(timezone.utc) - letto).total_seconds() / 3600
+    if not dati.get("ok"):
+        raise RuntimeError(f"dal PC di casa ({dati['letto']}): {dati.get('errore')}")
+    if ore > float(fonte.get("max_ore_casa", 48)):
+        raise RuntimeError(f"ultimi dati dal PC di casa vecchi di {ore:.0f} ore: il computer è spento o CacciatoreCasa è fermo")
+    return dati.get("voci", []), bool(dati.get("completo"))
+
+
 def scarica(fonte, rete):
     """Restituisce (voci, completo). Se completo è vero, gli annunci della fonte non più presenti sono venduti."""
+    if fonte.get("da_casa"):
+        return leggi_da_casa(fonte, rete)
     lettore = LETTORI.get(fonte.get("tipo"))
     if not lettore:
         raise ValueError(f"tipo di fonte sconosciuto: {fonte.get('tipo')!r}")
