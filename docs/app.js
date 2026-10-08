@@ -87,6 +87,8 @@
     var v = 0, mo = 0;
     dati.items.forEach(function (a) { var m = modalitaDi(a); if (m !== "moderno") v++; if (m !== "vintage") mo++; });
     el["n-vintage"].textContent = v; el["n-moderno"].textContent = mo;
+    el["m-vintage"].hidden = v === 0;  // senza annunci vintage la scheda sparisce
+    if (v === 0 && modalita === "vintage") impostaModalita("moderno", false);
   }
 
   function filtra() {
@@ -252,7 +254,7 @@
     el["v-elenco"].addEventListener("click", function () { impostaVista("elenco"); });
     el["v-griglia"].addEventListener("click", function () { impostaVista("griglia"); });
     el.tema.addEventListener("click", alternaTema);
-    impostaModalita(leggiTesto(CHIAVE_MOD) === "moderno" ? "moderno" : "vintage", false);
+    impostaModalita(leggiTesto(CHIAVE_MOD) === "vintage" ? "vintage" : "moderno", false);
     el["m-vintage"].addEventListener("click", function () { impostaModalita("vintage", true); ridisegna(); });
     el["m-moderno"].addEventListener("click", function () { impostaModalita("moderno", true); ridisegna(); });
     el.pannello.open = el.fonti.open = window.matchMedia("(min-width: 860px)").matches;
