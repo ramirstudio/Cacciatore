@@ -53,7 +53,8 @@ def controlla(fonte, cfg, rete):
     esclusi = set(cfg["generale"].get("paesi_esclusi", []))
     rilevanti = []
     for v in voci:
-        if (v["paese"] in esclusi and v["paese"] not in fonte.get("permetti_paesi", [])) or val.da_scartare(v["titolo"]) or val.da_scartare_negozio(v["titolo"]):
+        if (v["paese"] in esclusi and v["paese"] not in fonte.get("permetti_paesi", [])) or val.da_scartare(v["titolo"]) or val.da_scartare_negozio(v["titolo"]) \
+                or (fonte.get("modalita") == "moderno" and val.da_scartare_moderno(v["titolo"])):
             continue
         if v.get("nuovo") and fonte.get("escludi_nuovo", True):
             continue
