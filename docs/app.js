@@ -15,7 +15,7 @@
   var nascosti = new Set(leggi(CHIAVE_NASC));
 
   var el = {};
-  ["stato", "tema", "v-elenco", "v-griglia", "fonti", "elenco-fonti", "elenco", "vuoto", "conteggio", "pannello", "f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita",
+  ["stato", "tema", "v-elenco", "v-griglia", "m-vintage", "m-moderno", "n-vintage", "n-moderno", "fonti", "elenco-fonti", "elenco", "vuoto", "conteggio", "pannello", "f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita",
    "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
     .forEach(function (id) { el[id] = document.getElementById(id); });
 
@@ -71,6 +71,24 @@
     });
   }
 
+  var GRUPPI_MODERNI = ["Marche note a prezzo basso", "Reflex e mirrorless usate economiche", "Ottiche moderne usate economiche"];
+  var CHIAVE_MOD = "cacciatore.modalita";
+  var modalita = "vintage";
+  function modalitaDi(a) { return a.modalita || (GRUPPI_MODERNI.indexOf(a.gruppo) >= 0 ? "moderno" : "vintage"); }
+  function inModalita(a) { var m = modalitaDi(a); return m === "entrambe" || m === modalita; }
+  function impostaModalita(m, cambiaOrdine) {
+    modalita = m;
+    el["m-vintage"].setAttribute("aria-pressed", m === "vintage");
+    el["m-moderno"].setAttribute("aria-pressed", m === "moderno");
+    salvaTesto(CHIAVE_MOD, m);
+    if (cambiaOrdine) el["f-ordine"].value = m === "moderno" ? "affare" : "novita";  // nel moderno conta il prezzo
+  }
+  function conteggiModalita() {
+    var v = 0, mo = 0;
+    dati.items.forEach(function (a) { var m = modalitaDi(a); if (m !== "moderno") v++; if (m !== "vintage") mo++; });
+    el["n-vintage"].textContent = v; el["n-moderno"].textContent = mo;
+  }
+
   function filtra() {
     var testo = el["f-testo"].value.trim().toLowerCase();
     var tipo = el["f-tipo"].value, cod = el["f-paese"].value, fonte = el["f-fonte"].value;
@@ -80,6 +98,7 @@
     var soloPref = el["f-solopreferiti"].checked, conNasc = el["f-nascosti"].checked;
 
     var lista = dati.items.filter(function (a) {
+      if (!inModalita(a)) return false;
       if (!conNasc && nascosti.has(a.id)) return false;
       if (soloPref && !preferiti.has(a.id)) return false;
       if (testo && a.titolo.toLowerCase().indexOf(testo) === -1) return false;
@@ -175,14 +194,27 @@
     scrivi(chiave, Array.from(insieme));
   }
 
+  var quanti = 200;
+  function ridisegna() { quanti = 200; disegna(); }
+
   function disegna() {
     var lista = filtra();
     el.elenco.textContent = "";
     var frammento = document.createDocumentFragment();
-    lista.slice(0, 200).forEach(function (a) { frammento.appendChild(riga(a)); });
+    lista.slice(0, quanti).forEach(function (a) { frammento.appendChild(riga(a)); });
+    if (lista.length > quanti) {
+      var altri = document.createElement("li");
+      altri.className = "altri";
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = "Mostra altri 200";
+      b.addEventListener("click", function () { quanti += 200; disegna(); });
+      altri.appendChild(b);
+      frammento.appendChild(altri);
+    }
     el.elenco.appendChild(frammento);
     el.conteggio.textContent = lista.length + (lista.length === 1 ? " annuncio" : " annunci") +
-      (lista.length > 200 ? ", mostrati i primi 200" : "");
+      (lista.length > quanti ? ", mostrati i primi " + quanti : "");
     var vuoto = lista.length === 0;
     el.vuoto.hidden = !vuoto;
     if (vuoto) {
@@ -220,15 +252,19 @@
     el["v-elenco"].addEventListener("click", function () { impostaVista("elenco"); });
     el["v-griglia"].addEventListener("click", function () { impostaVista("griglia"); });
     el.tema.addEventListener("click", alternaTema);
+    impostaModalita(leggiTesto(CHIAVE_MOD) === "moderno" ? "moderno" : "vintage", false);
+    el["m-vintage"].addEventListener("click", function () { impostaModalita("vintage", true); ridisegna(); });
+    el["m-moderno"].addEventListener("click", function () { impostaModalita("moderno", true); ridisegna(); });
     el.pannello.open = el.fonti.open = window.matchMedia("(min-width: 860px)").matches;
     ["f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita", "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
-      .forEach(function (id) { el[id].addEventListener("input", disegna); });
+      .forEach(function (id) { el[id].addEventListener("input", ridisegna); });
 
     fetch("data/items.json", { cache: "no-cache" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) {
         dati = d;
         el.stato.textContent = d.aggiornato ? "Ultima novità registrata " + fa(d.aggiornato) : "";
+        conteggiModalita();
         popolaPaesi();
         popolaFonti();
         disegna();
