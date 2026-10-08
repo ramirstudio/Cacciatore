@@ -536,6 +536,31 @@ def leggi_email(fonte, rete):
     return list(voci.values()), False
 
 
+# -------------------------------------------------------------------- MPB
+def leggi_mpb(fonte, rete):
+    """Pagine di categoria di MPB (usato garantito): un elemento per modello, con il prezzo più basso disponibile."""
+    from bs4 import BeautifulSoup
+    base = fonte["url"].rstrip("/")
+    voci = {}
+    for indirizzo in fonte["urls"]:
+        for pagina in range(1, int(fonte.get("max_pagine", 6)) + 1):
+            r = rete.get(indirizzo, params={"page": pagina} if pagina > 1 else None)
+            soup = BeautifulSoup(r.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                a["href"] = https(a["href"].strip(), base) or a["href"]
+            trovati = estrai_da_html(str(soup), {**fonte, "link": r"/prodotto/"})
+            nuovi = [e for e in trovati if e["url"] not in voci]
+            for e in nuovi:
+                titolo = re.sub(r"\s+", " ", PREZZO_TESTO.sub("", e["titolo"])).strip(" -–—·|")
+                if len(titolo) < 4 or e["prezzo"] is None:
+                    continue
+                voci[e["url"]] = _voce(fonte, slug(e["url"].split("/prodotto/")[-1])[:80], titolo, e["url"],
+                                       e["prezzo"], e["valuta"], immagine=e["immagine"])
+            if not nuovi:
+                break  # pagina oltre l'ultima o già vista
+    return list(voci.values()), False
+
+
 LETTORI = {
     "shopify": leggi_shopify,
     "woocommerce": leggi_woocommerce,
@@ -544,6 +569,7 @@ LETTORI = {
     "html": leggi_html,
     "etsy": leggi_etsy,
     "email": leggi_email,
+    "mpb": leggi_mpb,
 }
 
 
