@@ -6,6 +6,7 @@ import re
 import os
 import statistics
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -265,9 +266,13 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                          "ultimo_ok": stato.get("eBay", {}).get("ultimo_ok")}
 
     if scarica_fonte:
+        limite = time.monotonic() + 60 * float(cfg.get("negozi", {}).get("tempo_massimo_minuti", 15))
         for f in cfg.get("fonti", []):
             if not f.get("attivo", True):
                 continue
+            if time.monotonic() > limite:
+                log.info("Tempo per i negozi finito: %s e i successivi al prossimo giro.", f["nome"])
+                break
             nome = f["nome"]
             prec = stato.get(nome, {})
             if prec.get("controllato") and prec.get("ok", True) and not forza:  # una fonte in errore si riprova a ogni giro
