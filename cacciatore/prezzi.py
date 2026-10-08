@@ -15,6 +15,9 @@ PAESI_UE = {
 TASSI_RIPIEGO = {
     "EUR": 1.0, "USD": 1.15, "GBP": 0.86, "JPY": 170.0, "CNY": 8.2, "HKD": 9.0,
     "PLN": 4.25, "CZK": 24.5, "HUF": 395.0, "RON": 5.1, "SEK": 11.0, "DKK": 7.46, "BGN": 1.96,
+    "NOK": 11.7, "CHF": 0.93, "ISK": 145.0,
+    # non quotate dalla BCE: restano sempre approssimate
+    "MDL": 19.5, "RSD": 117.0, "UAH": 48.0, "BAM": 1.96, "MKD": 61.5, "ALL": 98.0,
 }
 
 
