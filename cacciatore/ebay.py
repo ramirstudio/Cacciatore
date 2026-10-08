@@ -90,7 +90,7 @@ class Ebay:
             params["category_ids"] = categoria
         return params
 
-    def prova(self, q="zorki", marketplace="EBAY_DE", paese="DE"):
+    def prova(self, q="canon eos 6d", marketplace="EBAY_IT", paese="IT"):
         """Una sola chiamata di prova, con il testo esatto della risposta di eBay. Per la verifica."""
         credenziali = base64.b64encode(f"{self.client_id}:{self.client_secret}".encode()).decode()
         t = requests.post(URL_TOKEN, headers={"Authorization": f"Basic {credenziali}",
