@@ -199,6 +199,7 @@ fonti:
   # modello con il prezzo più basso disponibile.
   - nome: MPB fotocamere
     tipo: mpb
+    attivo: false                 # MPB blocca i programmi automatici (risposta 403): non leggibile da GitHub
     url: https://www.mpb.com
     urls:
       - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-mirrorless
@@ -212,6 +213,7 @@ fonti:
     ogni_minuti: 180
   - nome: MPB obiettivi
     tipo: mpb
+    attivo: false
     url: https://www.mpb.com
     urls:
       - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-mirrorless
