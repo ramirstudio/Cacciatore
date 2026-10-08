@@ -228,7 +228,7 @@ fonti:
   # mandano a te. Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
   - nome: Subito
     tipo: email
-    attivo: false
+    attivo: false                 # accendi (true) quando riesci ad accedere a Subito e a salvare una ricerca
     modalita: moderno
     mittenti: ["subito.it"]
     link: "subito\\.it/"          # solo i link che puntano agli annunci
@@ -239,7 +239,6 @@ fonti:
     ogni_minuti: 30
   - nome: Vinted
     tipo: email
-    attivo: false
     modalita: moderno
     mittenti: ["vinted"]
     link: "vinted\\.[a-z.]+/items/"
@@ -250,7 +249,6 @@ fonti:
     ogni_minuti: 30
   - nome: Wallapop
     tipo: email
-    attivo: false
     modalita: moderno
     mittenti: ["wallapop"]
     link: "wallapop\\.com/"
