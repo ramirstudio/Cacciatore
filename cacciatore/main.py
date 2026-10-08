@@ -94,7 +94,7 @@ def elabora(a, gruppo, valutatore, tassi, cfg):
     punteggio, termini, principale = valutatore.valuta(a["titolo"])
     a["punteggio"] = punteggio
     a["motivi"] = termini
-    a["tipo"] = tipo_prodotto(a["titolo"])
+    a["tipo"] = gruppo.get("tipo_fisso") or tipo_prodotto(a["titolo"])
     a["gruppo"] = gruppo["nome"]
     a["classico"] = bool(gruppo.get("classico"))
     a["ricerca_salvata"] = bool(gruppo.get("ricerca_salvata"))
@@ -192,11 +192,15 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
     esclusi = set(gen.get("paesi_esclusi", []))
     toccati = []
 
+    gen_rimuovi_vintage = bool(gen.get("rimuovi_vintage"))
     minimo_mod = float(cfg.get("moderno", {}).get("prezzo_minimo_eur", 0))
 
     def sotto_minimo_moderno(a):
         return a.get("prezzo_eur") is not None and a["prezzo_eur"] < minimo_mod
 
+    if gen_rimuovi_vintage:
+        for k in [k for k, v in archivio.items() if v.get("modalita", "vintage") == "vintage"]:
+            del archivio[k]  # la scheda Vintage non si alimenta più: si svuota
     for k in [k for k, v in archivio.items() if v.get("modalita") == "moderno"
               and (valutatore.da_scartare_moderno(v.get("titolo", "")) or sotto_minimo_moderno(v))]:
         del archivio[k]  # ripulisce quanto era entrato prima delle regole più strette
@@ -277,7 +281,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                 stato[nome] = {**prec, "controllato": iso(adesso), "ok": False, "errore": str(e)[:200]}
                 continue
             gruppo = {"nome": nome, "classico": f.get("classico", False), "escludi_nuovo": f.get("escludi_nuovo", True),
-                      "permetti_paesi": f.get("permetti_paesi", []), "modalita": f.get("modalita", "vintage"),
+                      "permetti_paesi": f.get("permetti_paesi", []), "modalita": f.get("modalita", "vintage"), "tipo_fisso": f.get("tipo_fisso"),
                       "tieni_tutto": f.get("tieni_tutto", cfg.get("negozi", {}).get("tieni_tutto", False)), "ricerca_salvata": f.get("tipo") == "email" or f.get("ricerca_salvata", False),
                       "spedizione_stimata_eur": f.get("spedizione_stimata_eur", cfg["importazione"].get("spedizione_stimata_eur", 25))}
             prima = len(toccati)
