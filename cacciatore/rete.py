@@ -62,6 +62,9 @@ class Rete:
                 rp.allow_all = True
             else:
                 rp.parse(r.text.splitlines())
+                ritardo = rp.crawl_delay("*")
+                if ritardo:  # Crawl-delay chiesto dal sito, fino a 15 secondi
+                    self.pausa_host[base] = max(self.pausa_host.get(base, 0), min(float(ritardo), 15.0))
         except requests.RequestException as e:
             log.warning("robots.txt di %s non raggiungibile (%s): non insisto.", base, e)
             self.motivo_robots[base] = f"non raggiungibile da qui ({str(e)[:90]})"
