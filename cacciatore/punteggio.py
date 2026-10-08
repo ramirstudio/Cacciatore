@@ -47,6 +47,7 @@ class Valutatore:
         self.escludi = [_regex(x) for x in p.get("escludi", [])]
         self.sospetti = [(x, _regex(x)) for x in p.get("sospetti", [])]
         self.escludi_moderno = [_regex(x) for x in cfg.get("moderno", {}).get("escludi_titolo", [])]
+        self.escludi_vintage = [_regex(x) for x in cfg.get("moderno", {}).get("escludi_vintage", [])]
         self.escludi_negozio = [_regex(x) for x in cfg.get("negozi", {}).get("escludi_titolo", [])]
 
     def da_scartare(self, titolo):
@@ -55,6 +56,8 @@ class Valutatore:
 
     def da_scartare_moderno(self, titolo):
         t = normalizza(titolo)
+        if any(r.search(t) for r in self.escludi_vintage):  # materiale analogico: sul titolo intero
+            return True
         # gli accessori in dotazione ("body + battery and charger") non rendono accessorio l'annuncio:
         # conta solo la parte prima di "with / incl / + / con / mit"
         t = re.split(r"\s(?:with|incl\.?|including|plus|con|mit|avec|inkl\.?|e|and)\s|\s\+\s?|,", t)[0]
