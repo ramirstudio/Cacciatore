@@ -55,6 +55,14 @@ jobs:
             echo "Nessuna novità da salvare."
           else
             git commit -m "dati"
-            git pull --rebase --autostash
-            git push
+            # il file dei dati viene riscritto da zero a ogni giro: in caso di conflitto vale la versione appena calcolata
+            for tentativo in 1 2 3; do
+              if git pull --rebase -X theirs && git push; then
+                exit 0
+              fi
+              git rebase --abort 2>/dev/null || true
+              sleep 5
+            done
+            echo "Salvataggio non riuscito: il prossimo giro riscriverà i dati."
+            exit 1
           fi
