@@ -71,7 +71,7 @@
     });
   }
 
-  var GRUPPI_MODERNI = ["Marche note a prezzo basso", "Reflex e mirrorless usate economiche", "Ottiche moderne usate economiche"];
+  var GRUPPI_MODERNI = [];
   var CHIAVE_MOD = "cacciatore.modalita";
   var modalita = "vintage";
   function modalitaDi(a) { return a.modalita || (GRUPPI_MODERNI.indexOf(a.gruppo) >= 0 ? "moderno" : "vintage"); }
