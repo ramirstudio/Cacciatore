@@ -247,6 +247,7 @@ fonti:
   #     immagine: "img"
 
 negozi:
+  tieni_tutto: true               # mostra sul sito tutto il catalogo usato dei negozi, non solo i pezzi rari (restano scartati film, borse, ecc.)
   pausa_secondi: 2.0              # attesa tra due richieste allo stesso sito
   # i negozi vendono anche accessori e materiale di consumo: questi titoli vengono scartati
   escludi_titolo:
