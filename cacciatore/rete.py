@@ -34,6 +34,7 @@ class Rete:
         self._robots = {}
         self.motivo_robots = {}
         self._ultimo = {}
+        self.pausa_host = {}  # pausa più lunga per i siti che la chiedono (Crawl-delay)
 
     @staticmethod
     def _base(url):
@@ -42,8 +43,9 @@ class Rete:
 
     def _pausa(self, base):
         passato = time.monotonic() - self._ultimo.get(base, -1e9)
-        if passato < self.pausa:
-            time.sleep(self.pausa - passato)
+        pausa = max(self.pausa, self.pausa_host.get(base, 0))
+        if passato < pausa:
+            time.sleep(pausa - passato)
         self._ultimo[base] = time.monotonic()
 
     def _regole(self, base):
