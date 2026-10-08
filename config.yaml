@@ -102,7 +102,7 @@ ricerche:
     q: "(canon ae-1,pentax k1000,olympus om-1,nikon fm2,minolta x-700,yashica fx-3,canon a-1,pentax mx,praktica mtl)"
   - nome: Marche note a prezzo basso
     classico: true                # avviso solo se è un affare
-    lontani: false
+    modalita: moderno             # compare solo nella scheda Moderno del sito
     q: "(sony a7,sony a6000,sony a6300,sony rx100,canon eos r,canon 5d,canon 6d,canon 80d,canon g7x,nikon d750,nikon d810,nikon z6,fujifilm x100,fujifilm x-t,panasonic gh5,leica q,olympus e-m)"
   - nome: Cinepresa e ottiche cine
     q: "(bolex,arriflex,super 8 camera,16mm camera,c-mount lens,cine lens,kinoptik,speed panchro,beaulieu,eclair)"
@@ -112,8 +112,12 @@ ricerche:
     q: "(nikkor,canon fd,minolta rokkor,minolta md,takumar,smc pentax,zuiko,yashica ml,tamron adaptall,sigma 30mm,tokina)"
   - nome: Reflex e mirrorless usate economiche
     classico: true
-    lontani: false
+    modalita: moderno
     q: "(canon eos 600d,canon eos 700d,canon eos 800d,canon eos 60d,canon eos 70d,nikon d3300,nikon d5300,nikon d5500,nikon d7000,nikon d7100,nikon d610,pentax k-5,sony nex-6,sony a5100,fujifilm x-e2,fujifilm x-t1,panasonic g7,olympus pen e-pl)"
+  - nome: Ottiche moderne usate economiche
+    classico: true
+    modalita: moderno
+    q: "(canon ef 50mm,canon ef 85mm,canon ef 24-70,canon ef 70-200,canon ef-s 18-55,nikon af-s,nikkor af-s,sony fe 50mm,sony fe 28-70,sony e 18-55,fujifilm xf 35mm,fujifilm xf 18-55,tamron sp 70-200,sigma art 35mm)"
   - nome: Compatte e telemetro a buon prezzo
     classico: true
     lontani: false
@@ -190,6 +194,7 @@ fonti:
   - nome: Subito
     tipo: email
     attivo: false
+    modalita: entrambe
     mittenti: ["subito.it"]
     link: "subito\\.it/"          # solo i link che puntano agli annunci
     giorni: 3
@@ -201,6 +206,7 @@ fonti:
   - nome: Vinted
     tipo: email
     attivo: false
+    modalita: entrambe
     mittenti: ["vinted"]
     link: "vinted\\.[a-z.]+/items/"
     giorni: 3
@@ -245,6 +251,41 @@ fonti:
   #     prezzo: ".price"
   #     link: "a"
   #     immagine: "img"
+
+# Scheda Moderno del sito: solo fotocamere e obiettivi; queste parole scartano accessori e pezzi guasti.
+moderno:
+  escludi_titolo:
+    - battery
+    - batteria
+    - grip
+    - charger
+    - caricabatterie
+    - strap
+    - tracolla
+    - bag
+    - borsa
+    - case only
+    - cover
+    - manual
+    - box only
+    - empty box
+    - lens cap
+    - hood
+    - paraluce
+    - for parts
+    - parts only
+    - broken
+    - defective
+    - faulty
+    - non funzionante
+    - per ricambi
+    - screen protector
+    - filter
+    - tripod
+    - flash only
+    - cage
+    - mount adapter
+    - viewfinder only
 
 negozi:
   tieni_tutto: true               # mostra sul sito tutto il catalogo usato dei negozi, non solo i pezzi rari (restano scartati film, borse, ecc.)
@@ -413,6 +454,16 @@ punteggio:
     - sigma 30mm
     - sigma 18-35
     - sigma 50mm
+    - nikon af-s 50mm
+    - nikkor af-s 50mm
+    - nikkor af-s 24-70
+    - sony fe 50mm
+    - sony fe 28-70
+    - sony e 18-55
+    - fujifilm xf 35mm
+    - fujifilm xf 18-55
+    - tamron sp 70-200
+    - sigma art 35mm
     - tokina 11-16
     - canon eos 600d
     - canon eos 650d
