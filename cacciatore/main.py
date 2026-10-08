@@ -33,7 +33,8 @@ NOMI_PAESI = {
     "ID": "Indonesia", "ZA": "Sudafrica", "VN": "Vietnam", "TH": "Thailandia", "MY": "Malesia",
     "SG": "Singapore", "PH": "Filippine", "NZ": "Nuova Zelanda",
 }
-MAX_ARCHIVIO = 4000
+MAX_ARCHIVIO = 4000          # annunci eBay
+MAX_ARCHIVIO_NEGOZI = 3000   # negozi ed email: non vanno mai tagliati a favore di eBay
 SLOT_MINUTI = 30
 
 
@@ -187,7 +188,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
             if valutatore.da_scartare_negozio(a["titolo"]):
                 return
         a = elabora(a, gruppo, valutatore, tassi, cfg)
-        if negozio and not gruppo.get("ricerca_salvata") and a["tipo"] == "altro" and a["punteggio"] < 1 and not a["motivi"]:
+        if negozio and not gruppo.get("ricerca_salvata") and not gruppo.get("tieni_tutto") and a["tipo"] == "altro" and a["punteggio"] < 1 and not a["motivi"]:
             return
         vecchio = archivio.get(a["id"], {})
         a["primo_visto"] = vecchio.get("primo_visto", iso(adesso))
@@ -247,7 +248,8 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                 stato[nome] = {**prec, "controllato": iso(adesso), "ok": False, "errore": str(e)[:200]}
                 continue
             gruppo = {"nome": nome, "classico": f.get("classico", False), "escludi_nuovo": f.get("escludi_nuovo", True),
-                      "permetti_paesi": f.get("permetti_paesi", []), "ricerca_salvata": f.get("tipo") == "email" or f.get("ricerca_salvata", False),
+                      "permetti_paesi": f.get("permetti_paesi", []),
+                      "tieni_tutto": f.get("tieni_tutto", cfg.get("negozi", {}).get("tieni_tutto", False)), "ricerca_salvata": f.get("tipo") == "email" or f.get("ricerca_salvata", False),
                       "spedizione_stimata_eur": f.get("spedizione_stimata_eur", cfg["importazione"].get("spedizione_stimata_eur", 25))}
             prima = len(toccati)
             for v in voci:
@@ -324,9 +326,14 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
         if a["ultimo_visto"] < limite or (a.get("fine_asta") and a["fine_asta"] < ora):
             del archivio[id_]
     elenco = sorted(archivio.values(), key=lambda a: a["primo_visto"], reverse=True)
-    if len(elenco) > MAX_ARCHIVIO:
-        elenco = sorted(elenco, key=lambda a: (bool(a.get("affare")), a["punteggio"], a["primo_visto"]), reverse=True)[:MAX_ARCHIVIO]
-        elenco.sort(key=lambda a: a["primo_visto"], reverse=True)
+    def taglia(voci, massimo):
+        if len(voci) <= massimo:
+            return voci
+        return sorted(voci, key=lambda a: (bool(a.get("affare")), a["punteggio"], a["primo_visto"]), reverse=True)[:massimo]
+    # tagli separati: la marea di annunci eBay non deve spingere fuori i negozi (e far ripartire i loro avvisi)
+    elenco = taglia([a for a in elenco if a["fonte"] == "eBay"], MAX_ARCHIVIO) + \
+        taglia([a for a in elenco if a["fonte"] != "eBay"], MAX_ARCHIVIO_NEGOZI)
+    elenco.sort(key=lambda a: a["primo_visto"], reverse=True)
 
     for a in elenco:
         a.pop("motivi_avviso", None)
