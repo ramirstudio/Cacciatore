@@ -239,7 +239,7 @@ fonti:
       - https://www.foto-erhardt.de/second-hand/gebrauchte-kameras.html
       - https://www.foto-erhardt.de/second-hand/gebrauchte-objektive.html
     link: "/second-hand/gebrauchte-(kameras|objektive)/"
-    titolo_togli: ["^\\s*In \\d+-\\d+ Werktagen", "Sofort lieferbar", "Auf Lager", "Zustand [A-D]"]
+    titolo_togli: ["^\\s*In \\d+-\\d+ Werktagen", "Sofort lieferbar", "Auf Lager", "Zustand [A-D]", "[-–]?\\s*Versand gratis", "zzgl\\. Versand"]
     paginazione: percorso         # la pagina 2 è .../gebrauchte-kameras.html/2
     max_pagine: 12
     modalita: moderno
