@@ -54,6 +54,9 @@ class Valutatore:
 
     def da_scartare_moderno(self, titolo):
         t = normalizza(titolo)
+        # gli accessori in dotazione ("body + battery and charger") non rendono accessorio l'annuncio:
+        # conta solo la parte prima di "with / incl / + / con / mit"
+        t = re.split(r"\s(?:with|incl\.?|including|plus|con|mit|avec|inkl\.?|e|and)\s|\s\+\s?|,", t)[0]
         return any(r.search(t) for r in self.escludi_moderno)
 
     def da_scartare_negozio(self, titolo):
