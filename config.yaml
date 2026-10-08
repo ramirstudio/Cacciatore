@@ -195,33 +195,41 @@ ricerche:
 # copiare un blocco e cambiare nome e indirizzo; poi lancia "Verifica fonti" da Actions per controllare.
 # Alla prima lettura di una fonte nuova nessun avviso: il catalogo esistente diventa la base di partenza.
 fonti:
-  # MPB: usato garantito, legge le pagine pubbliche di categoria (robots.txt lo permette). Mostra un elemento per
-  # modello con il prezzo più basso disponibile.
+  # MPB: usato garantito, un elemento per modello con la forchetta di prezzo (si tiene il più basso).
+  # MPB rifiuta le richieste dai server di GitHub (403 anche su robots.txt), mentre il suo robots.txt permette
+  # le pagine di categoria. Le legge il PC di casa (cartella CacciatoreCasa, python -m cacciatore.casa) e
+  # deposita il risultato in docs/data/casa/; qui si prende l'ultimo file arrivato.
   - nome: MPB fotocamere
     tipo: mpb
+    da_casa: true
     url: https://www.mpb.com
     urls:
       - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-mirrorless
       - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-reflex
       - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-compatte-di-qualita
     max_pagine: 8
+    titolo_togli: ["\\d+\\+?\\s*disponibil[ei]", "Esaurit[oa]", "Prezzo\\s*(da|a partire da)?"]
     tipo_fisso: fotocamera
     modalita: moderno
     paese: IT
     valuta: EUR
-    ogni_minuti: 180
+    ogni_minuti: 60
+    max_ore_casa: 48
   - nome: MPB obiettivi
     tipo: mpb
+    da_casa: true
     url: https://www.mpb.com
     urls:
       - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-mirrorless
       - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-per-reflex
     max_pagine: 12
+    titolo_togli: ["\\d+\\+?\\s*disponibil[ei]", "Esaurit[oa]", "Prezzo\\s*(da|a partire da)?"]
     tipo_fisso: ottica
     modalita: moderno
     paese: IT
     valuta: EUR
-    ogni_minuti: 180
+    ogni_minuti: 60
+    max_ore_casa: 48
   # Negozi europei di usato moderno. Gli elenchi di Foto Erhardt, StudioSport e Kamera Express si leggono dalle pagine
   # pubbliche di categoria (robots.txt lo permette); Nikon Service Dresden espone il catalogo Shopify.
   - nome: Nikon Service Dresden
