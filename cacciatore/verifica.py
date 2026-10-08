@@ -1,123 +1,165 @@
-import json
-import unittest
-from unittest import mock
+"""Prova a secco delle fonti in config.yaml: non salva niente e non manda avvisi.
 
-from cacciatore import negozi
-from cacciatore.negozi import PREZZO_TESTO, parse_prezzo, valuta_da_testo, leggi_pagine, leggi_vtex, leggi_shopify
-from cacciatore.rete import Rete
-from test_negozi import ReteFinta, Risposta
+    python -m cacciatore.verifica            tutte le fonti
+    python -m cacciatore.verifica "Nome"     solo quella
 
+Per ogni fonte dice se robots.txt permette la lettura, se la pagina risponde, quanti prodotti legge e
+quanti restano dopo i filtri. Serve a controllare un sito nuovo prima di lasciarlo girare da solo.
+"""
+import argparse
+import os
+import sys
+from pathlib import Path
 
-def prezzo(testo, predefinita="DEF"):
-    m = PREZZO_TESTO.search(testo)
-    return (parse_prezzo(m.group(0)), valuta_da_testo(m.group(0), predefinita)) if m else None
+import yaml
 
-
-class TestValute(unittest.TestCase):
-    def test_formati_europei(self):
-        self.assertEqual(prezzo("15 990 SEK"), (15990.0, "SEK"))
-        self.assertEqual(prezzo("kr 1 500,00", "NOK"), (1500.0, "NOK"))
-        self.assertEqual(prezzo("7 500 kr", "SEK"), (7500.0, "SEK"))
-        self.assertEqual(prezzo("5.080,00 DKK"), (5080.0, "DKK"))
-        self.assertEqual(prezzo("2 775,00 zł"), (2775.0, "PLN"))
-        self.assertEqual(prezzo("85 000 Ft"), (85000.0, "HUF"))
-        self.assertEqual(prezzo("13 190 Kč"), (13190.0, "CZK"))
-        self.assertEqual(prezzo("10 000 MDL"), (10000.0, "MDL"))
-        self.assertEqual(prezzo("300 USD"), (300.0, "USD"))
-        self.assertEqual(prezzo("229,00 € / 447,89 лв."), (229.0, "EUR"))
-        self.assertEqual(prezzo("100 euro"), (100.0, "EUR"))
-
-    def test_niente_prezzi_dentro_le_parole(self):
-        for t in ["Sony A7 III 3 kropp", "Soft 2 case", "Canon 85mm f/1.8 USM", "Nikon Z 24-70 2 ronde"]:
-            self.assertIsNone(PREZZO_TESTO.search(t), t)
+from . import negozi
+from .ebay import Ebay
+from .main import PAESI_UE
+from .punteggio import Valutatore
+from .rete import ErroreRete, Rete, Vietato
 
 
-def pagina(n, prefisso="/it/p"):
-    return (f'<div class="c"><a href="https://x.example{prefisso}/sony-a7-{n}">Sony A7 {n}</a><span>{n}00 €</span></div>'
-            f'<div class="c"><a href="https://x.example{prefisso}/nikon-z{n}">Nikon Z{n}</a><span>{n}50 €</span></div>')
+def controlla(fonte, cfg, rete):
+    esito = {"nome": fonte["nome"], "tipo": fonte.get("tipo"), "url": fonte.get("url"), "ok": False,
+             "robots": None, "letti": 0, "rilevanti": 0, "esempi": [], "nota": ""}
+    base = (fonte.get("url") or "").rstrip("/")
+    if fonte.get("tipo") not in ("etsy", "email"):  # API ufficiale e posta: nessun robots.txt di mezzo
+        try:
+            esito["robots"] = rete.permesso(base + "/")
+        except Exception as e:  # noqa: BLE001
+            esito["nota"] = f"robots.txt non letto: {e}"
+            return esito
+    try:
+        voci, completo = negozi.scarica(fonte, rete)
+    except Vietato:
+        motivo = getattr(rete, "motivo_robots", {}).get(base)
+        esito["nota"] = (f"fonte non usabile: {motivo}" if motivo
+                         else "robots.txt vieta la lettura di queste pagine: la fonte non può essere usata")
+        esito["robots"] = False
+        return esito
+    except (ErroreRete, ValueError, KeyError) as e:
+        esito["nota"] = f"lettura fallita: {e}"
+        return esito
+    except ImportError as e:
+        esito["nota"] = f"manca una libreria: {e}"
+        return esito
+    esito["ok"] = True
+    esito["letti"] = len(voci)
+    if not voci:
+        esito["nota"] = "pagina letta ma nessun prodotto: controlla l'indirizzo, o i selettori per il tipo html"
+        return esito
+    val = Valutatore(cfg)
+    esclusi = set(cfg["generale"].get("paesi_esclusi", []))
+    rilevanti = []
+    for v in voci:
+        if (v["paese"] in esclusi and v["paese"] not in fonte.get("permetti_paesi", [])) or val.da_scartare(v["titolo"]) or val.da_scartare_negozio(v["titolo"]) \
+                or (fonte.get("modalita") == "moderno" and val.da_scartare_moderno(v["titolo"])):
+            continue
+        if v.get("nuovo") and fonte.get("escludi_nuovo", True):
+            continue
+        punteggio, _, _ = val.valuta(v["titolo"])
+        if punteggio < 1 and fonte.get("tipo") != "email" and not cfg.get("negozi", {}).get("tieni_tutto", False):
+            continue
+        rilevanti.append((punteggio, v))
+    rilevanti.sort(key=lambda x: -x[0])
+    esito["rilevanti"] = len(rilevanti)
+    esito["esempi"] = [f"{p:.0f}/10  {v['titolo'][:70]}  {v['prezzo']:.0f} {v['valuta']}" for p, v in rilevanti[:5]]
+    if fonte.get("paese") not in PAESI_UE:
+        esito["nota"] = "paese fuori UE: il totale a casa include una stima di IVA e dogana"
+    if not completo:
+        esito["nota"] = (esito["nota"] + " " if esito["nota"] else "") + \
+            "elenco troncato dal limite di pagine: i venduti non verranno rimossi"
+    return esito
 
 
-class TestPaginazioni(unittest.TestCase):
-    def fonte(self, **k):
-        return {"nome": "Prova", "tipo": "pagine", "url": "https://x.example", "urls": ["https://x.example/usato"],
-                "link": "/it/p/", "max_pagine": 3, **k}
-
-    def leggi(self, pagine, **k):
-        rete = ReteFinta(pagine)
-        voci, _ = leggi_pagine(self.fonte(**k), rete)
-        return rete, voci
-
-    def test_virgola(self):
-        rete, voci = self.leggi({"https://x.example/usato": pagina(1), "https://x.example/usato,2": pagina(2),
-                                 "https://x.example/usato,3": "<html></html>"}, paginazione="virgola")
-        self.assertEqual(len(voci), 4)
-        self.assertEqual(rete.chiamate[1][0], "https://x.example/usato,2")
-
-    def test_pagina_html(self):
-        rete, voci = self.leggi({"https://x.example/usato": pagina(1), "https://x.example/usato/page2.html": pagina(2),
-                                 "https://x.example/usato/page3.html": "<html></html>"}, paginazione="pagina_html")
-        self.assertEqual(len(voci), 4)
-
-    def test_conta_da_zero(self):
-        rete, voci = self.leggi({"https://x.example/usato": pagina(1), "https://x.example/usato#1": pagina(2),
-                                 "https://x.example/usato#2": "<html></html>"}, pagina_iniziale=0)
-        self.assertEqual(rete.chiamate[1][1], {"page": 1})
-        self.assertEqual(len(voci), 4)
-
-    def test_valute_ammesse(self):
-        html = ('<div><a href="https://x.example/it/p/canon-600d">Canon 600D</a><span>4 500 MDL</span></div>'
-                '<div><a href="https://x.example/it/p/nikon-d3200">Nikon D3200</a><span>8 450 руб</span></div>'
-                '<div><a href="https://x.example/it/p/sony-a6000">Sony A6000</a><span>300 USD</span></div>')
-        _, voci = self.leggi({"https://x.example/usato": html}, valute_ammesse=["MDL", "USD", "EUR"], valuta="MDL", max_pagine=1)
-        self.assertEqual(sorted((v["titolo"], v["valuta"]) for v in voci), [("Canon 600D", "MDL"), ("Sony A6000", "USD")])
+def diagnosi_chiavi(cid, sec):
+    """Forma delle chiavi, senza rivelarle: basta a riconoscere sandbox, valori scambiati, spazi o a capo."""
+    def forma(v):
+        return f"{len(v)} caratteri" + (", con spazi o a capo ai margini" if v != v.strip() else "") + \
+               (", con virgolette" if v.strip()[:1] in "\"'" and v.strip() else "")
+    amb = "Production" if "-PRD-" in cid.upper() else ("SANDBOX" if "-SBX-" in cid.upper() else "non riconoscibile")
+    return (f"App ID: {forma(cid)}, ambiente {amb}, inizia con «{cid.strip()[:4]}». "
+            f"Cert ID: {forma(sec)}, inizia con «{sec.strip()[:4]}» (in Production comincia con PRD-). "
+            f"Se Client ID e Secret sono uguali o il Secret non comincia con PRD-, sono scambiati o è il Dev ID.")
 
 
-class TestScarta(unittest.TestCase):
-    def test_titoli_venduti_scartati(self):
-        fonte = {"nome": "Prova", "tipo": "pagine", "url": "https://x.example", "urls": ["https://x.example/usato"],
-                 "link": "/it/p/", "max_pagine": 1, "scarta": ["^\\s*MYYTY"]}
-        html = ('<div><a href="https://x.example/it/p/a">MYYTY Canon R6</a><span>900 €</span></div>'
-                '<div><a href="https://x.example/it/p/b">Canon R5</a><span>1900 €</span></div>')
-        voci, _ = negozi.scarica(fonte, ReteFinta({"https://x.example/usato": html}))
-        self.assertEqual([v["titolo"] for v in voci], ["Canon R5"])
+def controlla_ebay(prova=None):
+    """Una chiamata vera a eBay: dice se le chiavi funzionano e, se no, riporta la risposta di eBay parola per parola."""
+    esito = {"nome": "eBay", "tipo": "api", "url": "", "ok": False, "robots": None, "letti": 0, "rilevanti": 0,
+             "esempi": [], "nota": ""}
+    cid, sec = os.environ.get("EBAY_CLIENT_ID", "").strip(), os.environ.get("EBAY_CLIENT_SECRET", "").strip()
+    if not (cid and sec):
+        esito["nota"] = "i secret EBAY_CLIENT_ID ed EBAY_CLIENT_SECRET non arrivano al programma (nome sbagliato o messi nella scheda Variables)"
+        return esito
+    esito["diagnosi"] = diagnosi_chiavi(os.environ.get("EBAY_CLIENT_ID", ""), os.environ.get("EBAY_CLIENT_SECRET", ""))
+    try:
+        r = prova() if prova else Ebay(cid, sec).prova()
+    except Exception as e:  # noqa: BLE001
+        esito["nota"] = f"eBay non raggiungibile: {e}"
+        return esito
+    if r["token"] != 200:
+        esito["nota"] = f"token rifiutato ({r['token']}): {r['token_testo']}. {esito['diagnosi']}"
+    elif r.get("ricerca") != 200:
+        esito["nota"] = f"token ok, ricerca rifiutata ({r.get('ricerca')}): {r.get('ricerca_testo')}"
+    else:
+        esito["ok"] = True
+        esito["letti"] = r.get("totale") or 0
+        esito["esempi"] = r.get("esempi", [])
+        esito["nota"] = "chiavi accettate, la ricerca risponde"
+    return esito
 
 
-class TestVtex(unittest.TestCase):
-    def test_legge_catalogo_json(self):
-        prodotti = [
-            {"productId": "1", "productName": "Sony A6100 Body SH-1035890", "link": "https://www.f64.ro/sony-a6100-sh/p",
-             "items": [{"images": [{"imageUrl": "https://img.f64.ro/1.jpg"}],
-                        "sellers": [{"commertialOffer": {"Price": 1892.7, "AvailableQuantity": 1}}]}]},
-            {"productId": "2", "productName": "Esaurito", "link": "https://www.f64.ro/x/p",
-             "items": [{"sellers": [{"commertialOffer": {"Price": 100, "AvailableQuantity": 0}}]}]},
-        ]
-        rete = ReteFinta({"https://www.f64.ro/api/catalog_system/pub/products/search/consignatie/obiective": json.dumps(prodotti)})
-        fonte = {"nome": "F64", "tipo": "vtex", "url": "https://www.f64.ro", "categorie": ["consignatie/obiective"], "valuta": "RON"}
-        voci, completo = leggi_vtex(fonte, rete)
-        self.assertEqual(len(voci), 1)
-        self.assertEqual((voci[0]["prezzo"], voci[0]["valuta"]), (1892.7, "RON"))
-        self.assertEqual(rete.chiamate[0][1], {"_from": 0, "_to": 49})
+def testo(esiti):
+    righe = []
+    for e in esiti:
+        stato = "ok" if e["ok"] else "NON FUNZIONA"
+        righe.append(f"{e['nome']} ({e['tipo']}): {stato}")
+        if e["robots"] is None:
+            righe.append("  robots.txt: non si applica (API ufficiale o posta)")
+        else:
+            righe.append(f"  robots.txt: {'permette' if e['robots'] else 'vieta o non raggiungibile'}")
+        if e["ok"]:
+            righe.append(f"  prodotti letti: {e['letti']}, rilevanti dopo i filtri: {e['rilevanti']}")
+            for x in e["esempi"]:
+                righe.append(f"    {x}")
+        if e["nota"]:
+            righe.append(f"  {e['nota']}")
+        righe.append("")
+    return "\n".join(righe)
 
 
-class TestShopifyTag(unittest.TestCase):
-    def test_esclude_tag_pellicola(self):
-        prodotti = {"products": [
-            {"handle": "canon-fd-50", "title": "Canon FD 50mm", "tags": ["Usage-Film"],
-             "variants": [{"title": "Default Title", "price": "80.00", "available": True}], "images": []},
-            {"handle": "sony-fe-85", "title": "Sony FE 85mm", "tags": ["Usage-Digital"],
-             "variants": [{"title": "Default Title", "price": "450.00", "available": True}], "images": []},
-        ]}
-        fonte = {"nome": "Kamerastore", "url": "https://kamerastore.com", "collezioni": ["mirrorless-lenses"],
-                 "escludi_tag": ["Usage-Film"], "valuta": "EUR"}
-        voci, _ = leggi_shopify(fonte, ReteFinta({"https://kamerastore.com/collections/mirrorless-lenses/products.json": json.dumps(prodotti)}))
-        self.assertEqual([v["titolo"] for v in voci], ["Sony FE 85mm"])
+def markdown(esiti):
+    righe = ["| Fonte | Esito | Letti | Rilevanti | Note |", "|---|---|---|---|---|"]
+    for e in esiti:
+        righe.append(f"| {e['nome']} | {'ok' if e['ok'] else 'non funziona'} | {e['letti']} | {e['rilevanti']} | {e['nota']} |")
+    for e in esiti:
+        if e["esempi"]:
+            righe += ["", f"{e['nome']}, i primi risultati:", ""] + [f"- {x}" for x in e["esempi"]]
+    return "\n".join(righe) + "\n"
 
 
-class TestCrawlDelay(unittest.TestCase):
-    def test_rispetta_il_crawl_delay(self):
-        sessione = mock.Mock()
-        sessione.headers = {}
-        sessione.get.return_value = mock.Mock(status_code=200, text="User-agent: *\nCrawl-delay: 10\nDisallow: /cart\n")
-        rete = Rete(sessione=sessione)
-        self.assertTrue(rete.permesso("https://shop.example/begagnat"))
-        self.assertEqual(rete.pausa_host["https://shop.example"], 10.0)
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="cacciatore.verifica")
+    ap.add_argument("nome", nargs="?", help="nome di una sola fonte")
+    ap.add_argument("--config", default=str(Path(__file__).parent.parent / "config.yaml"))
+    args = ap.parse_args(argv)
+    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+    fonti = [f for f in cfg.get("fonti", []) if not args.nome or f["nome"].lower() == args.nome.lower()]
+    solo_ebay = bool(args.nome) and args.nome.lower() == "ebay"
+    if not fonti and not solo_ebay:
+        print("Nessuna fonte da controllare.")
+        return 1
+    rete = Rete(pausa=cfg.get("negozi", {}).get("pausa_secondi", 2.0))
+    esiti = [controlla_ebay()] if (solo_ebay or not args.nome) else []
+    esiti += [controlla(f, cfg, rete) for f in fonti if f.get("attivo", True) or args.nome]
+    print(testo(esiti))
+    riassunto = os.environ.get("GITHUB_STEP_SUMMARY")
+    if riassunto:
+        with open(riassunto, "a", encoding="utf-8") as f:
+            f.write(markdown(esiti))
+    return 0 if all(e["ok"] for e in esiti) else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
