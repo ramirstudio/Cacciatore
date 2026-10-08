@@ -15,7 +15,7 @@
   var nascosti = new Set(leggi(CHIAVE_NASC));
 
   var el = {};
-  ["stato", "tema", "v-elenco", "v-griglia", "m-vintage", "m-moderno", "n-vintage", "n-moderno", "fonti", "elenco-fonti", "elenco", "vuoto", "conteggio", "pannello", "f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita",
+  ["stato", "tema", "v-elenco", "v-griglia", "m-vintage", "m-moderno", "n-vintage", "n-moderno", "fonti", "elenco-fonti", "elenco", "vuoto", "conteggio", "pannello", "f-testo", "f-tipo", "f-marca", "f-paese", "f-fonte", "f-rarita",
    "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
     .forEach(function (id) { el[id] = document.getElementById(id); });
 
@@ -34,6 +34,44 @@
     ID: "Indonesia", ZA: "Sudafrica", VN: "Vietnam", TH: "Thailandia", MY: "Malesia", SG: "Singapore", PH: "Filippine",
     NZ: "Nuova Zelanda", ES: "Spagna", FR: "Francia", PT: "Portogallo", NL: "Paesi Bassi", BE: "Belgio", RS: "Serbia", US: "Stati Uniti" };
   function paese(codice) { return dati.nomi_paesi[codice] || PAESI_BASE[codice] || codice || "paese non indicato"; }
+
+  var MARCHE = [
+    ["Canon", /\b(canon|eos)\b/], ["Nikon", /\b(nikon|nikkor)\b/], ["Sony", /\b(sony|alpha|ilce)\b/],
+    ["Fujifilm", /\b(fujifilm|fuji|fujinon)\b/], ["Panasonic", /\b(panasonic|lumix)\b/],
+    ["Olympus / OM System", /\b(olympus|om system|zuiko)\b/], ["Pentax / Ricoh", /\b(pentax|ricoh)\b/],
+    ["Leica", /\bleica\b/], ["Sigma", /\bsigma\b/], ["Tamron", /\btamron\b/], ["Tokina", /\btokina\b/],
+    ["Samyang / Rokinon", /\b(samyang|rokinon)\b/], ["Viltrox", /\bviltrox\b/], ["Zeiss", /\bzeiss\b/],
+    ["Voigtländer", /\bvoigtl(ä|a|ae)nder\b/], ["Hasselblad", /\bhasselblad\b/], ["Laowa", /\blaowa\b/],
+    ["TTArtisan", /\bttartisan\b/], ["7Artisans", /\b7artisans\b/], ["Yongnuo", /\byongnuo\b/],
+    ["Meike", /\bmeike\b/], ["Blackmagic", /\bblackmagic\b/], ["GoPro", /\bgopro\b/], ["DJI", /\bdji\b/]
+  ];
+  function marcaDi(a) {
+    if (a._marca === undefined) {
+      var t = (a.titolo || "").toLowerCase();
+      a._marca = "Altre";
+      for (var i = 0; i < MARCHE.length; i++) { if (MARCHE[i][1].test(t)) { a._marca = MARCHE[i][0]; break; } }
+    }
+    return a._marca;
+  }
+  function popolaMarche() {
+    if (!dati || !dati.items) return;
+    var scelta = el["f-marca"].value, conteggio = {};
+    dati.items.forEach(function (a) { if (inModalita(a)) conteggio[marcaDi(a)] = (conteggio[marcaDi(a)] || 0) + 1; });
+    el["f-marca"].textContent = "";
+    var tutte = document.createElement("option");
+    tutte.value = ""; tutte.textContent = "Tutte";
+    el["f-marca"].appendChild(tutte);
+    Object.keys(conteggio).sort(function (x, y) {
+      if (x === "Altre") return 1;
+      if (y === "Altre") return -1;
+      return conteggio[y] - conteggio[x];
+    }).forEach(function (m) {
+      var o = document.createElement("option");
+      o.value = m; o.textContent = m + " (" + conteggio[m] + ")";
+      el["f-marca"].appendChild(o);
+    });
+    el["f-marca"].value = conteggio[scelta] ? scelta : "";
+  }
 
   function popolaPaesi() {
     var presenti = {};
@@ -81,6 +119,7 @@
     el["m-vintage"].setAttribute("aria-pressed", m === "vintage");
     el["m-moderno"].setAttribute("aria-pressed", m === "moderno");
     salvaTesto(CHIAVE_MOD, m);
+    popolaMarche();
     if (cambiaOrdine) el["f-ordine"].value = m === "moderno" ? "affare" : "novita";  // nel moderno conta il prezzo
   }
   function conteggiModalita() {
@@ -93,7 +132,7 @@
 
   function filtra() {
     var testo = el["f-testo"].value.trim().toLowerCase();
-    var tipo = el["f-tipo"].value, cod = el["f-paese"].value, fonte = el["f-fonte"].value;
+    var tipo = el["f-tipo"].value, marca = el["f-marca"].value, cod = el["f-paese"].value, fonte = el["f-fonte"].value;
     var rar = parseInt(el["f-rarita"].value, 10) || 0;
     var max = parseFloat(el["f-max"].value);
     var affari = el["f-affari"].checked, soloUE = el["f-nofuoriue"].checked;
@@ -105,6 +144,7 @@
       if (soloPref && !preferiti.has(a.id)) return false;
       if (testo && a.titolo.toLowerCase().indexOf(testo) === -1) return false;
       if (tipo && a.tipo !== tipo) return false;
+      if (marca && marcaDi(a) !== marca) return false;
       if (cod && a.paese !== cod) return false;
       if (fonte && a.fonte !== fonte) return false;
       if (a.punteggio < rar) return false;
@@ -258,7 +298,7 @@
     el["m-vintage"].addEventListener("click", function () { impostaModalita("vintage", true); ridisegna(); });
     el["m-moderno"].addEventListener("click", function () { impostaModalita("moderno", true); ridisegna(); });
     el.pannello.open = el.fonti.open = window.matchMedia("(min-width: 860px)").matches;
-    ["f-testo", "f-tipo", "f-paese", "f-fonte", "f-rarita", "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
+    ["f-testo", "f-tipo", "f-marca", "f-paese", "f-fonte", "f-rarita", "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
       .forEach(function (id) { el[id].addEventListener("input", ridisegna); });
 
     fetch("data/items.json", { cache: "no-cache" })
@@ -269,6 +309,7 @@
         conteggiModalita();
         popolaPaesi();
         popolaFonti();
+        popolaMarche();
         disegna();
       })
       .catch(function () {
