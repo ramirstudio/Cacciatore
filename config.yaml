@@ -199,7 +199,6 @@ fonti:
   # modello con il prezzo più basso disponibile.
   - nome: MPB fotocamere
     tipo: mpb
-    attivo: false                 # MPB blocca i programmi automatici (risposta 403): non leggibile da GitHub
     url: https://www.mpb.com
     urls:
       - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-mirrorless
@@ -213,7 +212,6 @@ fonti:
     ogni_minuti: 180
   - nome: MPB obiettivi
     tipo: mpb
-    attivo: false
     url: https://www.mpb.com
     urls:
       - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-mirrorless
@@ -224,6 +222,54 @@ fonti:
     paese: IT
     valuta: EUR
     ogni_minuti: 180
+  # Negozi europei di usato moderno. Gli elenchi di Foto Erhardt, StudioSport e Kamera Express si leggono dalle pagine
+  # pubbliche di categoria (robots.txt lo permette); Nikon Service Dresden espone il catalogo Shopify.
+  - nome: Nikon Service Dresden
+    tipo: shopify
+    url: https://www.nikonservice-dresden.de
+    collezioni: [kameras-gebrauchtware, objektive-gebrauchtware]
+    modalita: moderno
+    paese: DE
+    valuta: EUR
+    ogni_minuti: 120
+  - nome: Foto Erhardt
+    tipo: pagine
+    url: https://www.foto-erhardt.de
+    urls:
+      - https://www.foto-erhardt.de/second-hand/gebrauchte-kameras.html
+      - https://www.foto-erhardt.de/second-hand/gebrauchte-objektive.html
+    link: "/second-hand/gebrauchte-(kameras|objektive)/"
+    paginazione: percorso         # la pagina 2 è .../gebrauchte-kameras.html/2
+    max_pagine: 12
+    modalita: moderno
+    paese: DE
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: StudioSport
+    tipo: pagine
+    url: https://www.studiosport.fr
+    urls: [https://www.studiosport.fr/appareils-photo-doccasion-m67480.html]
+    link: "studiosport\\.fr/[a-z0-9-]+-a\\d+\\.html"
+    param_pagina: numPage
+    max_pagine: 10
+    modalita: moderno
+    paese: FR
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: Kamera Express
+    tipo: pagine
+    attivo: false                 # non ho potuto vedere il formato dei link prodotto: accendi e lancia "Verifica fonti"
+    url: https://www.kamera-express.nl
+    urls:
+      - https://www.kamera-express.nl/tweedehands-systeemcamera
+      - https://www.kamera-express.nl/tweedehands-zoomlens
+    link: "kamera-express\\.nl/[a-z0-9-]{12,}$"
+    pausa_secondi: 10             # il loro robots.txt chiede 10 secondi tra una richiesta e l'altra
+    max_pagine: 8
+    modalita: moderno
+    paese: NL
+    valuta: EUR
+    ogni_minuti: 240
   # Subito, Vinted e Wallapop: Cacciatore non entra nei loro siti. Legge le mail di "ricerca salvata" che i siti
   # mandano a te. Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
   - nome: Subito
