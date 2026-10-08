@@ -2,6 +2,7 @@
 import argparse
 import json
 import logging
+import re
 import os
 import statistics
 import sys
@@ -86,6 +87,10 @@ def elabora(a, gruppo, valutatore, tassi, cfg):
     a["gruppo"] = gruppo["nome"]
     a["classico"] = bool(gruppo.get("classico"))
     a["ricerca_salvata"] = bool(gruppo.get("ricerca_salvata"))
+    a["modalita"] = gruppo.get("modalita", "vintage")
+    if a["modalita"] == "moderno" and a["tipo"] == "altro" and principale:
+        # un modello noto vale come fotocamera, o come obiettivo se il modello è una focale (50mm, 24-70)
+        a["tipo"] = "ottica" if re.search(r"\d\s?mm|\d-\d", principale) else "fotocamera"
     if principale:
         a["chiave_mercato"] = f"{principale}|{a['tipo']}"
     elif a.get("tipo_fonte") == "negozio" or gruppo.get("classico"):
@@ -187,7 +192,11 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                 return
             if valutatore.da_scartare_negozio(a["titolo"]):
                 return
+        if gruppo.get("modalita") == "moderno" and valutatore.da_scartare_moderno(a["titolo"]):
+            return
         a = elabora(a, gruppo, valutatore, tassi, cfg)
+        if a["modalita"] == "moderno" and a["tipo"] == "altro":
+            return  # la modalità moderna mostra solo fotocamere e obiettivi
         if negozio and not gruppo.get("ricerca_salvata") and not gruppo.get("tieni_tutto") and a["tipo"] == "altro" and a["punteggio"] < 1 and not a["motivi"]:
             return
         vecchio = archivio.get(a["id"], {})
@@ -248,7 +257,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                 stato[nome] = {**prec, "controllato": iso(adesso), "ok": False, "errore": str(e)[:200]}
                 continue
             gruppo = {"nome": nome, "classico": f.get("classico", False), "escludi_nuovo": f.get("escludi_nuovo", True),
-                      "permetti_paesi": f.get("permetti_paesi", []),
+                      "permetti_paesi": f.get("permetti_paesi", []), "modalita": f.get("modalita", "vintage"),
                       "tieni_tutto": f.get("tieni_tutto", cfg.get("negozi", {}).get("tieni_tutto", False)), "ricerca_salvata": f.get("tipo") == "email" or f.get("ricerca_salvata", False),
                       "spedizione_stimata_eur": f.get("spedizione_stimata_eur", cfg["importazione"].get("spedizione_stimata_eur", 25))}
             prima = len(toccati)
