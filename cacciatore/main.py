@@ -61,14 +61,25 @@ def piano_ricerche(cfg, adesso):
     """
     esclusi = set(cfg["generale"].get("paesi_esclusi", []))
     gruppi = cfg["ricerche"]
-    vicini = [(i, p, m) for i in range(len(gruppi)) for p, m in cfg["paesi"].items() if p not in esclusi]
-    lontani = [(i, p, m) for i in range(len(gruppi)) if gruppi[i].get("lontani", True)
-               for p, m in cfg.get("paesi_lontani", {}).items() if p not in esclusi]
+    lontani_cfg = {p: m for p, m in cfg.get("paesi_lontani", {}).items() if p not in esclusi}
+    vicini_cfg = {p: m for p, m in cfg["paesi"].items() if p not in esclusi}
+    moderno = {i for i, g in enumerate(gruppi) if g.get("modalita") == "moderno"}
+    vicini = [(i, p, m) for i in range(len(gruppi)) if i not in moderno for p, m in vicini_cfg.items()]
+    lontani = [(i, p, m) for i in range(len(gruppi)) if i not in moderno and gruppi[i].get("lontani", True)
+               for p, m in lontani_cfg.items()]
+    # il Moderno ha una coda propria, così non viene sommerso dal vintage: tutti i paesi vicini e, per i gruppi
+    # che lo permettono, anche i lontani
+    nuovi = [(i, p, m) for i in sorted(moderno)
+             for p, m in list(vicini_cfg.items()) + (list(lontani_cfg.items()) if gruppi[i].get("lontani", True) else [])]
     totale = cfg["generale"]["chiamate_per_esecuzione"]
-    quota = min(int(cfg["generale"].get("quota_lontani", 0)), totale) if lontani else 0
+    q_mod = min(int(cfg["generale"].get("quota_moderno", 0)), totale) if nuovi else 0
+    q_lon = min(int(cfg["generale"].get("quota_lontani", 0)), totale - q_mod) if lontani else 0
+    if not q_mod:  # senza quota dedicata il Moderno ruota insieme agli altri
+        vicini = sorted(vicini + nuovi, key=lambda x: x[0])
+        nuovi = []
     slot = int(adesso.timestamp() // (SLOT_MINUTI * 60))
     piano = []
-    for elenco, budget in ((vicini, totale - quota), (lontani, quota)):
+    for elenco, budget in ((vicini, totale - q_mod - q_lon), (lontani, q_lon), (nuovi, q_mod)):
         if not elenco or budget <= 0:
             continue
         budget = min(budget, len(elenco))
