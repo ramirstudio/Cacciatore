@@ -23,6 +23,10 @@ try { var t = localStorage.getItem("cacciatore.tema"); if (t === "light" || t ==
     <p id="stato" class="nota"></p>
   </div>
   <div class="comandi">
+    <div class="gruppo modalita" role="group" aria-label="Modalità">
+      <button type="button" id="m-vintage">Vintage <span id="n-vintage"></span></button>
+      <button type="button" id="m-moderno">Moderno <span id="n-moderno"></span></button>
+    </div>
     <div class="gruppo" role="group" aria-label="Vista">
       <button type="button" id="v-elenco" aria-label="Vista a elenco" title="Elenco">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
