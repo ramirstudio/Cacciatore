@@ -32,6 +32,7 @@ class Rete:
         agente = AGENTE + (f" contatto: {contatto}" if contatto else "")
         self.s.headers.update({"User-Agent": agente, "Accept-Language": "en,it;q=0.8"})
         self._robots = {}
+        self.motivo_robots = {}
         self._ultimo = {}
 
     @staticmethod
@@ -54,12 +55,14 @@ class Rete:
             r = self.s.get(base + "/robots.txt", timeout=self.timeout)
             if r.status_code in (401, 403):
                 rp.disallow_all = True
+                self.motivo_robots[base] = f"il sito risponde {r.status_code} anche a robots.txt: blocca i programmi automatici"
             elif r.status_code >= 400:
                 rp.allow_all = True
             else:
                 rp.parse(r.text.splitlines())
         except requests.RequestException as e:
             log.warning("robots.txt di %s non raggiungibile (%s): non insisto.", base, e)
+            self.motivo_robots[base] = f"non raggiungibile da qui ({str(e)[:90]})"
             rp.disallow_all = True
         rp.modified()
         self._robots[base] = rp
