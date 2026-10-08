@@ -168,7 +168,7 @@ def da_avvisare(a, cfg):
     return motivi
 
 
-def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte=None, ebay_nota=None):
+def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte=None, ebay_nota=None, forza=False):
     dati = carica_json(percorso_dati, {"items": []})
     archivio = {a["id"]: a for a in dati.get("items", [])}
     valutatore = Valutatore(cfg)
@@ -237,7 +237,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                 continue
             nome = f["nome"]
             prec = stato.get(nome, {})
-            if prec.get("controllato") and prec.get("ok", True):  # una fonte in errore si riprova a ogni giro
+            if prec.get("controllato") and prec.get("ok", True) and not forza:  # una fonte in errore si riprova a ogni giro
                 trascorso = adesso - datetime.strptime(prec["controllato"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
                 if trascorso < timedelta(minutes=f.get("ogni_minuti", 120)):
                     continue
@@ -409,7 +409,7 @@ def main(argv=None):
         def scarica_fonte(f):
             return mod_negozi.scarica(f, rete)
 
-    esegui(cfg, args.dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte, ebay_nota)
+    esegui(cfg, args.dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte, ebay_nota, forza=bool(os.environ.get("CACCIATORE_FORZA")))
     return 0
 
 
