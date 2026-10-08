@@ -367,6 +367,90 @@ moderno:
     - cage
     - mount adapter
     - viewfinder only
+    - follow focus
+    - matte box
+    - extension tube
+    - tubo di prolunga
+    - reverse ring
+    - close-up
+    - memory sd card
+    - scheda memoria
+    - carte memoire
+    - cleaning kit
+    - eye cup
+    - rear cap
+    - front cap
+    - hot shoe
+    - l-bracket
+    - lens board
+    - step-up
+    - mount ring
+    - card reader
+    - cable
+    - cavo
+    - cord
+    - wire
+    - usb
+    - hdmi
+    - adapter
+    - adattatore
+    - remote
+    - telecomando
+    - intervalometer
+    - dummy
+    - replacement
+    - ricambio
+    - compatible
+    - compatibile
+    - skin
+    - decal
+    - rig
+    - teleconverter
+    - converter
+    - anello
+    - diffuser
+    - softbox
+    - lamp
+    - lampada
+    - microphone
+    - microfono
+    - gimbal
+    - stabilizer
+    - button
+    - viewfinder
+    - eyecup
+    - eyepiece
+    - hotshoe
+    - plate
+    - bracket
+    - case
+    - pouch
+    - custodia
+    - sacca
+    - backpack
+    - zaino
+    - manuale
+    - istruzioni
+    - instruction
+    - stampa
+    - magazine
+    - rivista
+    - catalogue
+    - catalogo
+    - brochure
+    - leaflet
+    - pcb
+    - flex
+    - ribbon
+    - motherboard
+    - mainboard
+    - repair
+    - riparazione
+    - sostituzione
+    - teleprompter
+    - body cap
+    - lens board
+  prezzo_minimo_eur: 45           # sotto questa cifra un pezzo moderno è quasi sempre un accessorio
 
 negozi:
   tieni_tutto: true               # mostra sul sito tutto il catalogo usato dei negozi, non solo i pezzi rari (restano scartati film, borse, ecc.)
