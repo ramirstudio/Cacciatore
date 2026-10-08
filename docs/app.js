@@ -1,322 +1,455 @@
-(function () {
-  "use strict";
+"""Ciclo di ricerca: interroga le fonti, valuta gli annunci, aggiorna l'archivio, manda gli avvisi."""
+import argparse
+import json
+import logging
+import re
+import os
+import statistics
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
-  var CHIAVE_PREF = "cacciatore.preferiti";
-  var CHIAVE_NASC = "cacciatore.nascosti";
-  var dati = { items: [], nomi_paesi: {} };
+import yaml
 
-  function leggi(chiave) {
-    try { return JSON.parse(localStorage.getItem(chiave) || "[]"); } catch (e) { return []; }
-  }
-  function scrivi(chiave, valore) {
-    try { localStorage.setItem(chiave, JSON.stringify(valore)); } catch (e) { /* storage non disponibile */ }
-  }
-  var preferiti = new Set(leggi(CHIAVE_PREF));
-  var nascosti = new Set(leggi(CHIAVE_NASC));
+from . import allegro as mod_allegro
+from . import ebay as mod_ebay
+from . import negozi as mod_negozi
+from .rete import Rete
+from .prezzi import PAESI_UE, arrivo_a_casa, in_euro, scarica_tassi
+from .punteggio import Valutatore, tipo_prodotto
+from .telegram import Telegram, formatta_avviso
 
-  var el = {};
-  ["stato", "tema", "v-elenco", "v-griglia", "m-vintage", "m-moderno", "n-vintage", "n-moderno", "fonti", "elenco-fonti", "elenco", "vuoto", "conteggio", "pannello", "f-testo", "f-tipo", "f-marca", "f-paese", "f-fonte", "f-rarita",
-   "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
-    .forEach(function (id) { el[id] = document.getElementById(id); });
+log = logging.getLogger("cacciatore")
 
-  function euro(x) {
-    return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(x);
-  }
-  function fa(iso) {
-    var min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    if (min < 60) return min + " min fa";
-    var ore = Math.round(min / 60);
-    if (ore < 48) return ore + " h fa";
-    return Math.round(ore / 24) + " giorni fa";
-  }
-  var PAESI_BASE = { FI: "Finlandia", SE: "Svezia", DK: "Danimarca", IE: "Irlanda", PT: "Portogallo", LU: "Lussemburgo",
-    CH: "Svizzera", NO: "Norvegia", TR: "Turchia", KR: "Corea del Sud", TW: "Taiwan", CA: "Canada", AU: "Australia",
-    ID: "Indonesia", ZA: "Sudafrica", VN: "Vietnam", TH: "Thailandia", MY: "Malesia", SG: "Singapore", PH: "Filippine",
-    NZ: "Nuova Zelanda", ES: "Spagna", FR: "Francia", PT: "Portogallo", NL: "Paesi Bassi", BE: "Belgio", RS: "Serbia", US: "Stati Uniti" };
-  function paese(codice) { return dati.nomi_paesi[codice] || PAESI_BASE[codice] || codice || "paese non indicato"; }
+NOMI_PAESI = {
+    "RO": "Romania", "BG": "Bulgaria", "PL": "Polonia", "CZ": "Repubblica Ceca", "SK": "Slovacchia",
+    "HU": "Ungheria", "HR": "Croazia", "SI": "Slovenia", "EE": "Estonia", "LV": "Lettonia",
+    "LT": "Lituania", "GR": "Grecia", "DE": "Germania", "AT": "Austria", "GB": "Regno Unito",
+    "JP": "Giappone", "CN": "Cina", "HK": "Hong Kong", "FR": "Francia", "ES": "Spagna",
+    "NL": "Paesi Bassi", "BE": "Belgio", "IT": "Italia", "US": "Stati Uniti",
+    "FI": "Finlandia", "SE": "Svezia", "DK": "Danimarca", "IE": "Irlanda", "PT": "Portogallo",
+    "LU": "Lussemburgo", "CY": "Cipro", "MT": "Malta", "CH": "Svizzera", "NO": "Norvegia",
+    "TR": "Turchia", "KR": "Corea del Sud", "TW": "Taiwan", "CA": "Canada", "AU": "Australia",
+    "RS": "Serbia", "UA": "Ucraina", "RU": "Russia", "BY": "Bielorussia",
+    "ID": "Indonesia", "ZA": "Sudafrica", "VN": "Vietnam", "TH": "Thailandia", "MY": "Malesia",
+    "SG": "Singapore", "PH": "Filippine", "NZ": "Nuova Zelanda",
+}
+MAX_ARCHIVIO = 4000          # annunci eBay
+MAX_ARCHIVIO_NEGOZI = 3000   # negozi ed email: non vanno mai tagliati a favore di eBay
+SLOT_MINUTI = 30
 
-  var MARCHE = [
-    ["Canon", /\b(canon|eos)\b/], ["Nikon", /\b(nikon|nikkor)\b/], ["Sony", /\b(sony|alpha|ilce)\b/],
-    ["Fujifilm", /\b(fujifilm|fuji|fujinon)\b/], ["Panasonic", /\b(panasonic|lumix)\b/],
-    ["Olympus / OM System", /\b(olympus|om system|zuiko)\b/], ["Pentax / Ricoh", /\b(pentax|ricoh)\b/],
-    ["Leica", /\bleica\b/], ["Sigma", /\bsigma\b/], ["Tamron", /\btamron\b/], ["Tokina", /\btokina\b/],
-    ["Samyang / Rokinon", /\b(samyang|rokinon)\b/], ["Viltrox", /\bviltrox\b/], ["Zeiss", /\bzeiss\b/],
-    ["Voigtländer", /\bvoigtl(ä|a|ae)nder\b/], ["Hasselblad", /\bhasselblad\b/], ["Laowa", /\blaowa\b/],
-    ["TTArtisan", /\bttartisan\b/], ["7Artisans", /\b7artisans\b/], ["Yongnuo", /\byongnuo\b/],
-    ["Meike", /\bmeike\b/], ["Blackmagic", /\bblackmagic\b/], ["GoPro", /\bgopro\b/], ["DJI", /\bdji\b/]
-  ];
-  function marcaDi(a) {
-    if (a._marca === undefined) {
-      var t = (a.titolo || "").toLowerCase();
-      a._marca = "Altre";
-      for (var i = 0; i < MARCHE.length; i++) { if (MARCHE[i][1].test(t)) { a._marca = MARCHE[i][0]; break; } }
+
+def iso(dt):
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def carica_json(percorso, predefinito):
+    p = Path(percorso)
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            log.warning("File %s illeggibile, riparto da zero.", p)
+    return predefinito
+
+
+def piano_ricerche(cfg, adesso):
+    """Elenco delle chiamate eBay da fare in questa esecuzione, a rotazione.
+
+    I paesi vicini (cfg["paesi"]) e quelli lontani (cfg["paesi_lontani"], con più dogana e più rischio) ruotano
+    separatamente: i lontani hanno una quota fissa di chiamate e solo i gruppi che non hanno lontani: false.
+    """
+    esclusi = set(cfg["generale"].get("paesi_esclusi", []))
+    gruppi = cfg["ricerche"]
+    lontani_cfg = {p: m for p, m in cfg.get("paesi_lontani", {}).items() if p not in esclusi}
+    vicini_cfg = {p: m for p, m in cfg["paesi"].items() if p not in esclusi}
+    moderno = {i for i, g in enumerate(gruppi) if g.get("modalita") == "moderno"}
+    vicini = [(i, p, m) for i in range(len(gruppi)) if i not in moderno for p, m in vicini_cfg.items()]
+    lontani = [(i, p, m) for i in range(len(gruppi)) if i not in moderno and gruppi[i].get("lontani", True)
+               for p, m in lontani_cfg.items()]
+    # il Moderno ha una coda propria, così non viene sommerso dal vintage: tutti i paesi vicini e, per i gruppi
+    # che lo permettono, anche i lontani
+    nuovi = [(i, p, m) for i in sorted(moderno)
+             for p, m in list(vicini_cfg.items()) + (list(lontani_cfg.items()) if gruppi[i].get("lontani", True) else [])]
+    totale = cfg["generale"]["chiamate_per_esecuzione"]
+    q_mod = min(int(cfg["generale"].get("quota_moderno", 0)), totale) if nuovi else 0
+    q_lon = min(int(cfg["generale"].get("quota_lontani", 0)), totale - q_mod) if lontani else 0
+    if not q_mod:  # senza quota dedicata il Moderno ruota insieme agli altri
+        vicini = sorted(vicini + nuovi, key=lambda x: x[0])
+        nuovi = []
+    slot = int(adesso.timestamp() // (SLOT_MINUTI * 60))
+    piano = []
+    for elenco, budget in ((vicini, totale - q_mod - q_lon), (lontani, q_lon), (nuovi, q_mod)):
+        if not elenco or budget <= 0:
+            continue
+        budget = min(budget, len(elenco))
+        inizio = (slot * budget) % len(elenco)
+        piano += [elenco[(inizio + k) % len(elenco)] for k in range(budget)]
+    return piano
+
+
+def elabora(a, gruppo, valutatore, tassi, cfg):
+    """Aggiunge punteggio, prezzi in euro, totale stimato e avvisi di prudenza."""
+    imp = cfg["importazione"]
+    punteggio, termini, principale = valutatore.valuta(a["titolo"])
+    a["punteggio"] = punteggio
+    a["motivi"] = termini
+    a["tipo"] = gruppo.get("tipo_fisso") or tipo_prodotto(a["titolo"])
+    a["gruppo"] = gruppo["nome"]
+    a["classico"] = bool(gruppo.get("classico"))
+    a["ricerca_salvata"] = bool(gruppo.get("ricerca_salvata"))
+    a["modalita"] = gruppo.get("modalita", "vintage")
+    if a["modalita"] == "moderno" and a["tipo"] == "altro" and principale:
+        # un modello noto vale come fotocamera, o come obiettivo se il modello è una focale (50mm, 24-70)
+        a["tipo"] = "ottica" if re.search(r"\d\s?mm|\d-\d", principale) else "fotocamera"
+    if principale:
+        a["chiave_mercato"] = f"{principale}|{a['tipo']}"
+    elif a.get("tipo_fonte") == "negozio" or gruppo.get("classico"):
+        a["chiave_mercato"] = None  # senza un modello riconosciuto non c'è un mercato con cui confrontare
+    else:
+        a["chiave_mercato"] = f"{gruppo['nome']}|{a['tipo']}"
+
+    a["prezzo_eur"] = in_euro(a["prezzo"], a["valuta"], tassi)
+    sped = in_euro(a["spedizione"], a["valuta_spedizione"] or a["valuta"], tassi)
+    stimata = sped is None
+    if stimata:
+        sped = gruppo.get("spedizione_stimata_eur", imp.get("spedizione_stimata_eur", 25))
+    a["spedizione_eur"] = sped
+    a["spedizione_stimata"] = stimata
+    if a["prezzo_eur"] is None:
+        a["totale_eur"], a["extra_ue"] = None, a["paese"] not in PAESI_UE
+    else:
+        a["totale_eur"], a["extra_ue"] = arrivo_a_casa(a["prezzo_eur"], sped, a["paese"], imp)
+
+    avvisi = []
+    if a["extra_ue"]:
+        avvisi.append("fuori UE: IVA e dogana sono una stima, il conto vero è nel checkout")
+    if stimata:
+        avvisi.append("spedizione non indicata, costo stimato")
+    if a["fonte"] == "eBay":
+        if a["feedback_n"] is None:
+            avvisi.append("venditore senza feedback visibili")
+        elif a["feedback_n"] < 10:
+            avvisi.append(f"venditore con soli {a['feedback_n']} feedback")
+        if a["feedback_pct"] is not None and a["feedback_pct"] < 97:
+            avvisi.append(f"feedback positivi al {a['feedback_pct']:.0f}%")
+    if a["asta"]:
+        avvisi.append("asta: il prezzo mostrato è l'offerta attuale")
+    for s in valutatore.sospetto(a["titolo"]):
+        avvisi.append(f"il titolo contiene «{s}»")
+    a["avvisi"] = avvisi
+    return a
+
+
+def calcola_affari(archivio, cfg):
+    av = cfg["avvisi"]
+    gruppi = {}
+    for a in archivio.values():
+        if a.get("totale_eur") and not a.get("asta") and a.get("chiave_mercato"):
+            gruppi.setdefault(a["chiave_mercato"], []).append(a["totale_eur"])
+    mediane = {k: statistics.median(v) for k, v in gruppi.items() if len(v) >= av["affare_minimo_annunci"]}
+    for a in archivio.values():
+        a["affare"], a["rapporto_mediana"] = False, None
+        m = mediane.get(a.get("chiave_mercato")) if a.get("chiave_mercato") else None
+        if m and a.get("totale_eur") and not a.get("asta"):
+            rapporto = a["totale_eur"] / m
+            a["rapporto_mediana"] = round(rapporto, 2)
+            a["mediana_eur"] = round(m, 2)
+            if rapporto <= av["affare_sotto_mediana"] and a["totale_eur"] >= av["affare_prezzo_minimo_eur"]:
+                a["affare"] = True
+    return archivio
+
+
+def da_avvisare(a, cfg):
+    """Restituisce l'elenco dei motivi per cui l'annuncio merita un avviso (vuoto = nessun avviso)."""
+    av = cfg["avvisi"]
+    motivi = []
+    if not a["classico"] and a["punteggio"] >= av["soglia_punteggio"]:
+        motivi.append(f"Pezzo particolare, punteggio {a['punteggio']}/10: {', '.join(a['motivi'])}")
+    if a.get("ricerca_salvata"):
+        motivi.append("Nuovo risultato di una tua ricerca salvata")
+    if a["affare"]:
+        motivi.append(
+            f"Affare: costa il {round(a['rapporto_mediana'] * 100)}% della mediana "
+            f"di annunci simili (circa {a['mediana_eur']:.0f} EUR)"
+        )
+    if not motivi:
+        return []
+    if a.get("notificato"):
+        prima = a.get("prezzo_notificato")
+        ribasso = av["riavvisa_se_ribasso"]
+        if prima and a.get("totale_eur") and a["totale_eur"] <= prima * (1 - ribasso):
+            return ["Prezzo sceso del " + str(round((1 - a["totale_eur"] / prima) * 100)) + "%"] + motivi
+        return []
+    return motivi
+
+
+def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte=None, ebay_nota=None, forza=False):
+    dati = carica_json(percorso_dati, {"items": []})
+    archivio = {a["id"]: a for a in dati.get("items", [])}
+    valutatore = Valutatore(cfg)
+    gen = cfg["generale"]
+    esclusi = set(gen.get("paesi_esclusi", []))
+    toccati = []
+
+    gen_rimuovi_vintage = bool(gen.get("rimuovi_vintage"))
+    minimo_mod = float(cfg.get("moderno", {}).get("prezzo_minimo_eur", 0))
+
+    def sotto_minimo_moderno(a):
+        return a.get("prezzo_eur") is not None and a["prezzo_eur"] < minimo_mod
+
+    if gen_rimuovi_vintage:
+        for k in [k for k, v in archivio.items() if v.get("modalita", "vintage") == "vintage"]:
+            del archivio[k]  # la scheda Vintage non si alimenta più: si svuota
+    for k in [k for k, v in archivio.items() if v.get("modalita") == "moderno"
+              and (valutatore.da_scartare_moderno(v.get("titolo", "")) or sotto_minimo_moderno(v))]:
+        del archivio[k]  # ripulisce quanto era entrato prima delle regole più strette
+
+    def acquisisci(a, gruppo, negozio=False):
+        if not a["url"].startswith("https://") or a.get("prezzo") is None:
+            return
+        if (a["paese"] in esclusi and a["paese"] not in gruppo.get("permetti_paesi", [])) \
+                or valutatore.da_scartare(a["titolo"]):
+            return
+        if negozio:
+            if a.get("nuovo") and gruppo.get("escludi_nuovo", True):
+                return
+            if valutatore.da_scartare_negozio(a["titolo"]):
+                return
+        if gruppo.get("modalita") == "moderno" and valutatore.da_scartare_moderno(a["titolo"]):
+            return
+        a = elabora(a, gruppo, valutatore, tassi, cfg)
+        if a["modalita"] == "moderno" and (a["tipo"] == "altro" or sotto_minimo_moderno(a)):
+            return  # la modalità moderna mostra solo fotocamere e obiettivi, sopra un prezzo minimo
+        if negozio and not gruppo.get("ricerca_salvata") and not gruppo.get("tieni_tutto") and a["tipo"] == "altro" and a["punteggio"] < 1 and not a["motivi"]:
+            return
+        vecchio = archivio.get(a["id"], {})
+        a["primo_visto"] = vecchio.get("primo_visto", iso(adesso))
+        a["ultimo_visto"] = adesso.strftime("%Y-%m-%d")
+        a["notificato"] = vecchio.get("notificato", False)
+        a["prezzo_notificato"] = vecchio.get("prezzo_notificato")
+        archivio[a["id"]] = a
+        toccati.append(a["id"])
+
+    stato = dict(dati.get("stato_fonti", {}))
+    errori, riuscite, ricevuti, ultimo_errore = 0, 0, 0, None
+    piano = piano_ricerche(cfg, adesso) if cerca_ebay else []
+    for idx, paese, mkt in piano:
+        gruppo = cfg["ricerche"][idx]
+        try:
+            grezzi = cerca_ebay(gruppo["q"], mkt, paese)
+        except mod_ebay.ErroreAutEbay as e:
+            errori += 1
+            ultimo_errore = str(e)
+            log.error("eBay non accetta le chiavi, mi fermo: %s", e)
+            break
+        except Exception as e:  # noqa: BLE001
+            errori += 1
+            ultimo_errore = str(e)
+            log.error("Ricerca fallita (%s, %s): %s", gruppo["nome"], paese, e)
+            if (errori >= 5 and not riuscite) or errori >= 15:
+                log.error("Troppi errori, mi fermo per questa esecuzione.")
+                break
+            continue
+        riuscite += 1
+        ricevuti += len(grezzi)
+        for g in grezzi:
+            acquisisci(mod_ebay.normalizza_annuncio(g, mkt), gruppo)
+    if piano:
+        prec = stato.get("eBay", {})
+        stato["eBay"] = {"controllato": iso(adesso), "ok": riuscite > 0, "errore": (ultimo_errore or "")[:300] or None,
+                         "ultimo_ok": iso(adesso) if riuscite else prec.get("ultimo_ok"), "iniziale": True,
+                         "trovati": ricevuti, "ricerche": riuscite, "ricerche_fallite": errori}
+    elif ebay_nota:
+        stato["eBay"] = {"controllato": iso(adesso), "ok": False, "errore": ebay_nota, "trovati": 0,
+                         "ultimo_ok": stato.get("eBay", {}).get("ultimo_ok")}
+
+    if scarica_fonte:
+        limite = time.monotonic() + 60 * float(cfg.get("negozi", {}).get("tempo_massimo_minuti", 15))
+        for f in cfg.get("fonti", []):
+            if not f.get("attivo", True):
+                continue
+            if time.monotonic() > limite:
+                log.info("Tempo per i negozi finito: %s e i successivi al prossimo giro.", f["nome"])
+                break
+            nome = f["nome"]
+            prec = stato.get(nome, {})
+            if prec.get("controllato") and prec.get("ok", True) and not forza:  # una fonte in errore si riprova a ogni giro
+                trascorso = adesso - datetime.strptime(prec["controllato"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                if trascorso < timedelta(minutes=f.get("ogni_minuti", 120)):
+                    continue
+            try:
+                voci, completo = scarica_fonte(f)
+            except Exception as e:  # noqa: BLE001
+                log.error("Fonte %s non letta: %s", nome, e)
+                stato[nome] = {**prec, "controllato": iso(adesso), "ok": False, "errore": str(e)[:200]}
+                continue
+            gruppo = {"nome": nome, "classico": f.get("classico", False), "escludi_nuovo": f.get("escludi_nuovo", True),
+                      "permetti_paesi": f.get("permetti_paesi", []), "modalita": f.get("modalita", "vintage"), "tipo_fisso": f.get("tipo_fisso"),
+                      "tieni_tutto": f.get("tieni_tutto", cfg.get("negozi", {}).get("tieni_tutto", False)), "ricerca_salvata": f.get("tipo") == "email" or f.get("ricerca_salvata", False),
+                      "spedizione_stimata_eur": f.get("spedizione_stimata_eur", cfg["importazione"].get("spedizione_stimata_eur", 25))}
+            prima = len(toccati)
+            for v in voci:
+                acquisisci(v, gruppo, negozio=True)
+            nuovi_id = toccati[prima:]
+            iniziale = not prec.get("iniziale")
+            if iniziale:
+                # primo giro su questa fonte: tutto ciò che c'è già non è una novità, niente avvisi
+                for id_ in nuovi_id:
+                    archivio[id_]["notificato"] = True
+                    archivio[id_]["prezzo_notificato"] = archivio[id_]["totale_eur"]
+            if completo:
+                presenti = {v["id"] for v in voci}
+                for id_ in [k for k, a in archivio.items() if a["fonte"] == nome and k not in presenti]:
+                    del archivio[id_]
+            stato[nome] = {"controllato": iso(adesso), "ultimo_ok": iso(adesso), "ok": True, "errore": None,
+                           "iniziale": True, "trovati": len(voci)}
+            log.info("Fonte %s: %d prodotti letti, %d rilevanti%s.", nome, len(voci), len(nuovi_id),
+                     " (primo giro, nessun avviso)" if iniziale else "")
+
+    if cfg.get("allegro", {}).get("attivo") and cerca_allegro:
+        gruppo = {"nome": "Allegro", "classico": False}
+        for frase in cfg["allegro"]["frasi"]:
+            try:
+                for g in cerca_allegro(frase):
+                    acquisisci(mod_allegro.normalizza_annuncio(g), gruppo)
+            except mod_allegro.AllegroNonAbilitato as e:
+                log.warning("%s Salto Allegro.", e)
+                break
+            except Exception as e:  # noqa: BLE001
+                log.error("Allegro fallito (%s): %s", frase, e)
+
+    calcola_affari(archivio, cfg)
+
+    # avvisi
+    nuovi = []
+    for id_ in dict.fromkeys(toccati):
+        a = archivio[id_]
+        motivi = da_avvisare(a, cfg)
+        if motivi:
+            a["motivi_avviso"] = motivi
+            nuovi.append(a)
+    nuovi.sort(key=lambda a: (a["affare"], a["punteggio"]), reverse=True)
+    inviati = 0
+    if telegram and nuovi:
+        massimo = gen["max_avvisi_per_esecuzione"]
+        for a in nuovi[:massimo]:
+            try:
+                telegram.annuncio(formatta_avviso(a, NOMI_PAESI), a.get("immagine"))
+                a["notificato"], a["prezzo_notificato"] = True, a["totale_eur"]
+                inviati += 1
+            except Exception as e:  # noqa: BLE001
+                log.error("Avviso non inviato: %s", e)
+        resto = nuovi[massimo:]
+        if resto:
+            try:
+                righe = [f"Altri {len(resto)} annunci da vedere sul sito, non inviati uno per uno:"]
+                righe += [f"{a['titolo'][:80]} ({a['totale_eur']:.0f} EUR)" for a in resto[:10]]
+                telegram.testo("\n".join(righe))
+                for a in resto:
+                    a["notificato"], a["prezzo_notificato"] = True, a["totale_eur"]
+            except Exception as e:  # noqa: BLE001
+                log.error("Riassunto non inviato: %s", e)
+    elif nuovi:
+        log.info("Avvisi che sarebbero partiti (Telegram non configurato): %d", len(nuovi))
+        for a in nuovi:
+            log.info("  %s | %s", a["titolo"][:90], " / ".join(a["motivi_avviso"]))
+
+    # pulizia
+    limite = (adesso - timedelta(days=gen["conserva_giorni"])).strftime("%Y-%m-%d")
+    ora = iso(adesso)
+    for id_ in list(archivio):
+        a = archivio[id_]
+        if a["ultimo_visto"] < limite or (a.get("fine_asta") and a["fine_asta"] < ora):
+            del archivio[id_]
+    elenco = sorted(archivio.values(), key=lambda a: a["primo_visto"], reverse=True)
+    def taglia(voci, massimo):
+        if len(voci) <= massimo:
+            return voci
+        return sorted(voci, key=lambda a: (bool(a.get("affare")), a["punteggio"], a["primo_visto"]), reverse=True)[:massimo]
+    # tagli separati: la marea di annunci eBay non deve spingere fuori i negozi (e far ripartire i loro avvisi)
+    elenco = taglia([a for a in elenco if a["fonte"] == "eBay"], MAX_ARCHIVIO) + \
+        taglia([a for a in elenco if a["fonte"] != "eBay"], MAX_ARCHIVIO_NEGOZI)
+    elenco.sort(key=lambda a: a["primo_visto"], reverse=True)
+
+    for a in elenco:
+        a.pop("motivi_avviso", None)
+
+    configurate = {f["nome"] for f in cfg.get("fonti", [])} | {"eBay"}
+    uscita = {
+        "aggiornato": iso(adesso),
+        "nomi_paesi": NOMI_PAESI,
+        "stato_fonti": {k: v for k, v in stato.items() if k in configurate},
+        "items": elenco,
     }
-    return a._marca;
-  }
-  function popolaMarche() {
-    if (!dati || !dati.items) return;
-    var scelta = el["f-marca"].value, conteggio = {};
-    dati.items.forEach(function (a) { if (inModalita(a)) conteggio[marcaDi(a)] = (conteggio[marcaDi(a)] || 0) + 1; });
-    el["f-marca"].textContent = "";
-    var tutte = document.createElement("option");
-    tutte.value = ""; tutte.textContent = "Tutte";
-    el["f-marca"].appendChild(tutte);
-    Object.keys(conteggio).sort(function (x, y) {
-      if (x === "Altre") return 1;
-      if (y === "Altre") return -1;
-      return conteggio[y] - conteggio[x];
-    }).forEach(function (m) {
-      var o = document.createElement("option");
-      o.value = m; o.textContent = m + " (" + conteggio[m] + ")";
-      el["f-marca"].appendChild(o);
-    });
-    el["f-marca"].value = conteggio[scelta] ? scelta : "";
-  }
+    Path(percorso_dati).parent.mkdir(parents=True, exist_ok=True)
+    Path(percorso_dati).write_text(json.dumps(uscita, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    log.info("Fatto: %d annunci in archivio, %d toccati, %d avvisi inviati, %d errori.",
+             len(elenco), len(set(toccati)), inviati, errori)
+    return uscita
 
-  function popolaPaesi() {
-    var presenti = {};
-    dati.items.forEach(function (a) { if (a.paese) presenti[a.paese] = true; });
-    Object.keys(presenti).sort(function (a, b) { return paese(a).localeCompare(paese(b), "it"); })
-      .forEach(function (c) {
-        var o = document.createElement("option");
-        o.value = c; o.textContent = paese(c);
-        el["f-paese"].appendChild(o);
-      });
-  }
 
-  function popolaFonti() {
-    var conteggio = {};
-    dati.items.forEach(function (a) { if (a.fonte) conteggio[a.fonte] = (conteggio[a.fonte] || 0) + 1; });
-    Object.keys(conteggio).sort(function (a, b) { return a.localeCompare(b, "it"); }).forEach(function (f) {
-      var o = document.createElement("option");
-      o.value = f; o.textContent = f + " (" + conteggio[f] + ")";
-      el["f-fonte"].appendChild(o);
-    });
-    var stato = dati.stato_fonti || {};
-    var nomi = Object.keys(stato);
-    el["elenco-fonti"].textContent = "";
-    el.fonti.hidden = nomi.length === 0;
-    nomi.forEach(function (n) {
-      var s = stato[n];
-      var li = nodo("li", s.ok ? "" : "guasta");
-      li.appendChild(nodo("strong", null, n));
-      var riga = s.ok
-        ? s.trovati + (n === "eBay" ? " annunci ricevuti nell'ultimo giro, " : " prodotti letti, ") + (conteggio[n] || 0) + " in elenco, controllata " + fa(s.controllato)
-        : "non leggibile: " + (s.errore || "errore sconosciuto") + (s.ultimo_ok ? ". Ultima lettura riuscita " + fa(s.ultimo_ok) : "");
-      if (s.ok && s.errore && n === "eBay") riga += ". Alcune ricerche in errore: " + s.errore;
-      li.appendChild(nodo("span", "meta", riga));
-      el["elenco-fonti"].appendChild(li);
-    });
-  }
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="cacciatore")
+    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--dati", default="docs/data/items.json")
+    ap.add_argument("--fixture", help="file JSON con annunci eBay di prova, senza chiamare eBay")
+    ap.add_argument("--senza-telegram", action="store_true")
+    args = ap.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-  var GRUPPI_MODERNI = [];
-  var CHIAVE_MOD = "cacciatore.modalita";
-  var modalita = "vintage";
-  function modalitaDi(a) { return a.modalita || (GRUPPI_MODERNI.indexOf(a.gruppo) >= 0 ? "moderno" : "vintage"); }
-  function inModalita(a) { var m = modalitaDi(a); return m === "entrambe" || m === modalita; }
-  function impostaModalita(m, cambiaOrdine) {
-    modalita = m;
-    el["m-vintage"].setAttribute("aria-pressed", m === "vintage");
-    el["m-moderno"].setAttribute("aria-pressed", m === "moderno");
-    salvaTesto(CHIAVE_MOD, m);
-    popolaMarche();
-    if (cambiaOrdine) el["f-ordine"].value = m === "moderno" ? "affare" : "novita";  // nel moderno conta il prezzo
-  }
-  function conteggiModalita() {
-    var v = 0, mo = 0;
-    dati.items.forEach(function (a) { var m = modalitaDi(a); if (m !== "moderno") v++; if (m !== "vintage") mo++; });
-    el["n-vintage"].textContent = v; el["n-moderno"].textContent = mo;
-    el["m-vintage"].hidden = v === 0;  // senza annunci vintage la scheda sparisce
-    if (v === 0 && modalita === "vintage") impostaModalita("moderno", false);
-  }
+    cfg = yaml.safe_load(Path(args.config).read_text(encoding="utf-8"))
+    adesso = datetime.now(timezone.utc)
+    ebay_nota = None
 
-  function filtra() {
-    var testo = el["f-testo"].value.trim().toLowerCase();
-    var tipo = el["f-tipo"].value, marca = el["f-marca"].value, cod = el["f-paese"].value, fonte = el["f-fonte"].value;
-    var rar = parseInt(el["f-rarita"].value, 10) || 0;
-    var max = parseFloat(el["f-max"].value);
-    var affari = el["f-affari"].checked, soloUE = el["f-nofuoriue"].checked;
-    var soloPref = el["f-solopreferiti"].checked, conNasc = el["f-nascosti"].checked;
+    if args.fixture:
+        grezzi = json.loads(Path(args.fixture).read_text(encoding="utf-8"))
+        usati = {"fatto": False}
 
-    var lista = dati.items.filter(function (a) {
-      if (!inModalita(a)) return false;
-      if (!conNasc && nascosti.has(a.id)) return false;
-      if (soloPref && !preferiti.has(a.id)) return false;
-      if (testo && a.titolo.toLowerCase().indexOf(testo) === -1) return false;
-      if (tipo && a.tipo !== tipo) return false;
-      if (marca && marcaDi(a) !== marca) return false;
-      if (cod && a.paese !== cod) return false;
-      if (fonte && a.fonte !== fonte) return false;
-      if (a.punteggio < rar) return false;
-      if (!isNaN(max) && a.totale_eur != null && a.totale_eur > max) return false;
-      if (affari && !a.affare) return false;
-      if (soloUE && a.extra_ue) return false;
-      return true;
-    });
+        def cerca_ebay(q, mkt, paese):
+            if usati["fatto"]:
+                return []
+            usati["fatto"] = True
+            return grezzi
 
-    var ordine = el["f-ordine"].value;
-    lista.sort(function (a, b) {
-      if (ordine === "rarita") return b.punteggio - a.punteggio || cmpNovita(a, b);
-      if (ordine === "prezzo") return (a.totale_eur == null) - (b.totale_eur == null) || a.totale_eur - b.totale_eur;
-      if (ordine === "affare") return (a.rapporto_mediana == null) - (b.rapporto_mediana == null) || a.rapporto_mediana - b.rapporto_mediana;
-      return cmpNovita(a, b);
-    });
-    return lista;
-  }
-  function cmpNovita(a, b) { return a.primo_visto < b.primo_visto ? 1 : -1; }
+        cerca_allegro = None
+        tassi = {"EUR": 1.0, "USD": 1.15, "GBP": 0.86, "JPY": 170.0, "PLN": 4.25, "RON": 5.1}
+    else:
+        cid, sec = os.environ.get("EBAY_CLIENT_ID"), os.environ.get("EBAY_CLIENT_SECRET")
+        gen = cfg["generale"]
+        cerca_ebay = None
+        if cid and sec:
+            client = mod_ebay.Ebay(cid, sec)
 
-  function nodo(tag, classe, testo) {
-    var n = document.createElement(tag);
-    if (classe) n.className = classe;
-    if (testo != null) n.textContent = testo;
-    return n;
-  }
+            def cerca_ebay(q, mkt, paese):
+                return client.cerca(q, mkt, paese, gen.get("consegna_in"), gen.get("categoria_ebay") or None,
+                                    gen.get("risultati_per_chiamata", 50))
+        else:
+            log.warning("Mancano EBAY_CLIENT_ID e EBAY_CLIENT_SECRET: salto eBay, leggo solo le altre fonti.")
+            ebay_nota = ("mancano i secret EBAY_CLIENT_ID ed EBAY_CLIENT_SECRET: devono stare in Secrets and variables, "
+                         "scheda Secrets, con questi nomi esatti")
 
-  function riga(a) {
-    var li = nodo("li", "riga" + (nascosti.has(a.id) ? " nascosto" : ""));
-    var img = nodo("img", "foto");
-    img.alt = ""; img.loading = "lazy"; img.referrerPolicy = "no-referrer";
-    if (a.immagine && a.immagine.indexOf("https://") === 0) img.src = a.immagine;
-    li.appendChild(img);
+        cerca_allegro = None
+        if os.environ.get("ALLEGRO_CLIENT_ID") and os.environ.get("ALLEGRO_CLIENT_SECRET"):
+            al = mod_allegro.Allegro(os.environ["ALLEGRO_CLIENT_ID"], os.environ["ALLEGRO_CLIENT_SECRET"])
+            cerca_allegro = al.cerca
+        tassi = scarica_tassi()
 
-    var c = nodo("div");
-    var t = nodo("a", "titolo", a.titolo);
-    t.href = a.url; t.target = "_blank"; t.rel = "noopener noreferrer";
-    c.appendChild(t);
+    telegram = None
+    if not args.senza_telegram and os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"):
+        telegram = Telegram(os.environ["TELEGRAM_BOT_TOKEN"], os.environ["TELEGRAM_CHAT_ID"])
 
-    var p = nodo("div", "prezzo");
-    if (a.totale_eur != null) {
-      p.appendChild(document.createTextNode(euro(a.totale_eur)));
-      var piccolo = nodo("small", null, a.extra_ue ? "  stimato a casa, con IVA e dogana" : "  con spedizione");
-      p.appendChild(piccolo);
-    } else {
-      p.textContent = "Prezzo non disponibile";
-    }
-    c.appendChild(p);
+    scarica_fonte = None
+    if not args.fixture:
+        rete = Rete(pausa=cfg.get("negozi", {}).get("pausa_secondi", 2.0))
 
-    var dettagli = [];
-    if (a.prezzo_eur != null) {
-      dettagli.push((a.asta ? "offerta attuale " : "oggetto ") + euro(a.prezzo_eur) +
-        (a.spedizione_eur != null ? ", spedizione " + euro(a.spedizione_eur) + (a.spedizione_stimata ? " (stimata)" : "") : ""));
-    }
-    dettagli.push(paese(a.paese));
-    dettagli.push(a.fonte);
-    dettagli.push(fa(a.primo_visto));
-    c.appendChild(nodo("div", "meta", dettagli.join(" · ")));
+        def scarica_fonte(f):
+            return mod_negozi.scarica(f, rete)
 
-    if (a.punteggio >= 1) {
-      var r = nodo("div", "meta");
-      var s = nodo("span", "rarita", "Rarità " + a.punteggio + "/10");
-      r.appendChild(s);
-      if (a.motivi && a.motivi.length) r.appendChild(document.createTextNode(" · " + a.motivi.join(", ")));
-      c.appendChild(r);
-    }
-    if (a.affare) {
-      c.appendChild(nodo("div", "meta affare",
-        "Affare: " + Math.round(a.rapporto_mediana * 100) + "% della mediana di annunci simili (circa " + euro(a.mediana_eur) + ")"));
-    }
-    if (a.avvisi && a.avvisi.length) c.appendChild(nodo("div", "attenzione", a.avvisi.join("; ").replace(/^./, function (m) { return m.toUpperCase(); }) + "."));
+    esegui(cfg, args.dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte, ebay_nota, forza=bool(os.environ.get("CACCIATORE_FORZA")))
+    return 0
 
-    var az = nodo("div", "azioni");
-    var pref = nodo("button", null, preferiti.has(a.id) ? "Nei preferiti" : "Salva");
-    pref.type = "button"; pref.setAttribute("aria-pressed", preferiti.has(a.id));
-    pref.onclick = function () { alterna(preferiti, a.id, CHIAVE_PREF); disegna(); };
-    var nasc = nodo("button", null, nascosti.has(a.id) ? "Mostra di nuovo" : "Nascondi");
-    nasc.type = "button";
-    nasc.onclick = function () { alterna(nascosti, a.id, CHIAVE_NASC); disegna(); };
-    az.appendChild(pref); az.appendChild(nasc);
-    c.appendChild(az);
 
-    li.appendChild(c);
-    return li;
-  }
-
-  function alterna(insieme, id, chiave) {
-    if (insieme.has(id)) insieme.delete(id); else insieme.add(id);
-    scrivi(chiave, Array.from(insieme));
-  }
-
-  var quanti = 200;
-  function ridisegna() { quanti = 200; disegna(); }
-
-  function disegna() {
-    var lista = filtra();
-    el.elenco.textContent = "";
-    var frammento = document.createDocumentFragment();
-    lista.slice(0, quanti).forEach(function (a) { frammento.appendChild(riga(a)); });
-    if (lista.length > quanti) {
-      var altri = document.createElement("li");
-      altri.className = "altri";
-      var b = document.createElement("button");
-      b.type = "button";
-      b.textContent = "Mostra altri 200";
-      b.addEventListener("click", function () { quanti += 200; disegna(); });
-      altri.appendChild(b);
-      frammento.appendChild(altri);
-    }
-    el.elenco.appendChild(frammento);
-    el.conteggio.textContent = lista.length + (lista.length === 1 ? " annuncio" : " annunci") +
-      (lista.length > quanti ? ", mostrati i primi " + quanti : "");
-    var vuoto = lista.length === 0;
-    el.vuoto.hidden = !vuoto;
-    if (vuoto) {
-      el.vuoto.textContent = dati.items.length === 0
-        ? "Nessun annuncio ancora. La prima ricerca parte entro mezz'ora dall'attivazione del workflow su GitHub."
-        : "Nessun annuncio con questi filtri.";
-    }
-  }
-
-  var CHIAVE_VISTA = "cacciatore.vista", CHIAVE_TEMA = "cacciatore.tema";
-  function salvaTesto(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage non disponibile */ } }
-  function leggiTesto(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
-
-  function impostaVista(v) {
-    el.elenco.classList.toggle("griglia", v === "griglia");
-    el["v-griglia"].setAttribute("aria-pressed", v === "griglia");
-    el["v-elenco"].setAttribute("aria-pressed", v !== "griglia");
-    salvaTesto(CHIAVE_VISTA, v);
-  }
-  function temaCorrente() {
-    var t = document.documentElement.getAttribute("data-theme");
-    if (t) return t;
-    return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  }
-  function alternaTema() {
-    var nuovo = temaCorrente() === "dark" ? "light" : "dark";
-    document.documentElement.setAttribute("data-theme", nuovo);
-    salvaTesto(CHIAVE_TEMA, nuovo);
-    var m = document.querySelector('meta[name="theme-color"]');
-    if (m) m.setAttribute("content", nuovo === "dark" ? "#121315" : "#f2f3f4");
-  }
-
-  function avvia() {
-    impostaVista(leggiTesto(CHIAVE_VISTA) === "griglia" ? "griglia" : "elenco");
-    el["v-elenco"].addEventListener("click", function () { impostaVista("elenco"); });
-    el["v-griglia"].addEventListener("click", function () { impostaVista("griglia"); });
-    el.tema.addEventListener("click", alternaTema);
-    impostaModalita(leggiTesto(CHIAVE_MOD) === "vintage" ? "vintage" : "moderno", false);
-    el["m-vintage"].addEventListener("click", function () { impostaModalita("vintage", true); ridisegna(); });
-    el["m-moderno"].addEventListener("click", function () { impostaModalita("moderno", true); ridisegna(); });
-    el.pannello.open = el.fonti.open = window.matchMedia("(min-width: 860px)").matches;
-    ["f-testo", "f-tipo", "f-marca", "f-paese", "f-fonte", "f-rarita", "f-max", "f-ordine", "f-affari", "f-nofuoriue", "f-solopreferiti", "f-nascosti"]
-      .forEach(function (id) { el[id].addEventListener("input", ridisegna); });
-
-    fetch("data/items.json", { cache: "no-cache" })
-      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-      .then(function (d) {
-        dati = d;
-        el.stato.textContent = d.aggiornato ? "Ultima novità registrata " + fa(d.aggiornato) : "";
-        conteggiModalita();
-        popolaPaesi();
-        popolaFonti();
-        popolaMarche();
-        disegna();
-      })
-      .catch(function () {
-        el.stato.textContent = "";
-        el.vuoto.hidden = false;
-        el.vuoto.textContent = "Nessun dato ancora. Se hai appena attivato il progetto, aspetta la prima esecuzione del workflow.";
-      });
-  }
-  avvia();
-})();
+if __name__ == "__main__":
+    sys.exit(main())
