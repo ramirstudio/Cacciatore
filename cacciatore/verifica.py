@@ -24,7 +24,7 @@ def controlla(fonte, cfg, rete):
     esito = {"nome": fonte["nome"], "tipo": fonte.get("tipo"), "url": fonte.get("url"), "ok": False,
              "robots": None, "letti": 0, "rilevanti": 0, "esempi": [], "nota": ""}
     base = (fonte.get("url") or "").rstrip("/")
-    if fonte.get("tipo") not in ("etsy", "email"):  # API ufficiale e posta: nessun robots.txt di mezzo
+    if fonte.get("tipo") not in ("etsy", "email") and not fonte.get("da_casa"):  # API ufficiale, posta, PC di casa: nessun robots.txt di mezzo
         try:
             esito["robots"] = rete.permesso(base + "/")
         except Exception as e:  # noqa: BLE001
@@ -43,6 +43,9 @@ def controlla(fonte, cfg, rete):
         return esito
     except ImportError as e:
         esito["nota"] = f"manca una libreria: {e}"
+        return esito
+    except Exception as e:  # noqa: BLE001  una fonte rotta non deve fermare il resto del rapporto
+        esito["nota"] = f"lettura fallita: {e}"
         return esito
     esito["ok"] = True
     esito["letti"] = len(voci)
