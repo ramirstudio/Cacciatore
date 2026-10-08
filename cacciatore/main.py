@@ -187,9 +187,6 @@ def da_avvisare(a, cfg):
 def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tassi, scarica_fonte=None, ebay_nota=None, forza=False):
     dati = carica_json(percorso_dati, {"items": []})
     archivio = {a["id"]: a for a in dati.get("items", [])}
-    for k in [k for k, v in archivio.items() if v.get("modalita") == "moderno"
-              and (valutatore.da_scartare_moderno(v.get("titolo", "")) or sotto_minimo_moderno(v))]:
-        del archivio[k]  # ripulisce quanto era entrato prima delle regole più strette
     valutatore = Valutatore(cfg)
     gen = cfg["generale"]
     esclusi = set(gen.get("paesi_esclusi", []))
@@ -199,6 +196,10 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
 
     def sotto_minimo_moderno(a):
         return a.get("prezzo_eur") is not None and a["prezzo_eur"] < minimo_mod
+
+    for k in [k for k, v in archivio.items() if v.get("modalita") == "moderno"
+              and (valutatore.da_scartare_moderno(v.get("titolo", "")) or sotto_minimo_moderno(v))]:
+        del archivio[k]  # ripulisce quanto era entrato prima delle regole più strette
 
     def acquisisci(a, gruppo, negozio=False):
         if not a["url"].startswith("https://") or a.get("prezzo") is None:
