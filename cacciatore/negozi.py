@@ -417,7 +417,7 @@ def leggi_etsy(fonte, rete):
 
 
 # ------------------------------------------------------------- Email (IMAP)
-PREZZO_TESTO = re.compile(r"(?:€|eur)\s?\d[\d.,]*|\d[\d.,]*\s?(?:€|eur)", re.I)
+PREZZO_TESTO = re.compile(r"(?:€|eur)\s?\d[\d.,]*|\d{1,3}(?:[.\s\u00a0\u202f]\d{3})+(?:,\d{1,2})?\s?(?:€|eur)|\d[\d.,]*\s?(?:€|eur)", re.I)
 LINK_DA_SALTARE = re.compile(r"unsubscribe|disiscri|preferenz|privacy|cookie|mailto:|/help|assistenza|termini|facebook|instagram|apple\.com|google\.com/store", re.I)
 TLD_PAESI = {"it": "IT", "fr": "FR", "de": "DE", "es": "ES", "pl": "PL", "cz": "CZ", "lt": "LT", "nl": "NL",
              "be": "BE", "at": "AT", "pt": "PT", "sk": "SK", "hu": "HU", "ro": "RO", "hr": "HR", "gr": "GR",
@@ -536,26 +536,38 @@ def leggi_email(fonte, rete):
     return list(voci.values()), False
 
 
-# -------------------------------------------------------------------- MPB
-def leggi_mpb(fonte, rete):
-    """Pagine di categoria di MPB (usato garantito): un elemento per modello, con il prezzo più basso disponibile."""
+# ------------------------------------------------- elenchi di negozi generici
+def leggi_pagine(fonte, rete):
+    """Pagine di categoria di un negozio senza API: ogni link a un prodotto con il prezzo nello stesso blocco.
+
+    Paginazione: ?page=N (param_pagina), oppure il numero in coda al percorso (paginazione: percorso).
+    MPB mostra un elemento per modello con il prezzo più basso disponibile.
+    """
     from bs4 import BeautifulSoup
     base = fonte["url"].rstrip("/")
+    if fonte.get("pausa_secondi") and hasattr(rete, "pausa_host"):
+        rete.pausa_host[base] = float(fonte["pausa_secondi"])
     voci = {}
     for indirizzo in fonte["urls"]:
         for pagina in range(1, int(fonte.get("max_pagine", 6)) + 1):
-            r = rete.get(indirizzo, params={"page": pagina} if pagina > 1 else None)
+            params, url = None, indirizzo
+            if pagina > 1:
+                if fonte.get("paginazione") == "percorso":
+                    url = indirizzo.rstrip("/") + f"/{pagina}"
+                else:
+                    params = {fonte.get("param_pagina", "page"): pagina}
+            r = rete.get(url, params=params)
             soup = BeautifulSoup(r.text, "html.parser")
             for a in soup.find_all("a", href=True):
                 a["href"] = https(a["href"].strip(), base) or a["href"]
-            trovati = estrai_da_html(str(soup), {**fonte, "link": r"/prodotto/"})
+            trovati = estrai_da_html(str(soup), {**fonte, "link": fonte.get("link", r"/prodotto/")})
             nuovi = [e for e in trovati if e["url"] not in voci]
             for e in nuovi:
                 titolo = re.sub(r"\s+", " ", PREZZO_TESTO.sub("", e["titolo"])).strip(" -–—·|")
                 if len(titolo) < 4 or e["prezzo"] is None:
                     continue
-                voci[e["url"]] = _voce(fonte, slug(e["url"].split("/prodotto/")[-1])[:80], titolo, e["url"],
-                                       e["prezzo"], e["valuta"], immagine=e["immagine"])
+                coda = slug(e["url"].split("//", 1)[-1].split("/", 1)[-1])[:80]
+                voci[e["url"]] = _voce(fonte, coda, titolo, e["url"], e["prezzo"], e["valuta"], immagine=e["immagine"])
             if not nuovi:
                 break  # pagina oltre l'ultima o già vista
     return list(voci.values()), False
@@ -569,7 +581,8 @@ LETTORI = {
     "html": leggi_html,
     "etsy": leggi_etsy,
     "email": leggi_email,
-    "mpb": leggi_mpb,
+    "mpb": leggi_pagine,
+    "pagine": leggi_pagine,
 }
 
 
