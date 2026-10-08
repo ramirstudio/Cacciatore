@@ -1,594 +1,1096 @@
-"""Lettura di negozi e siti di usato, senza login e senza aggirare protezioni.
+# Impostazioni di Cacciatore. Si modifica direttamente su GitHub, senza toccare il codice.
 
-Ogni sito si descrive in config.yaml sotto "fonti" con un tipo di lettura:
-  shopify      elenco prodotti pubblico dei negozi Shopify (/products.json)
-  woocommerce  API pubblica dei negozi WooCommerce (/wp-json/wc/store/v1/products)
-  jsonld       pagine di elenco con dati strutturati schema.org (Product o ItemList)
-  rss          feed RSS o Atom, per forum e bacheche di annunci
-  html         pagine di elenco lette con selettori CSS scritti da te
-  etsy         API ufficiale di Etsy, con la tua chiave personale
-  email        le mail di "ricerca salvata" che Subito, Vinted ecc. mandano a te
+generale:
+  conserva_giorni: 10             # dopo quanti giorni senza vederlo un annuncio sparisce dal sito
+  chiamate_per_esecuzione: 90     # limite eBay: 5.000 chiamate al giorno; 90 x 48 esecuzioni = 4.320
+  quota_moderno: 90               # di queste 90, quante vanno ai gruppi Moderno (vicini e lontani)
+  quota_lontani: 15               # quante vanno ai paesi lontani per i gruppi vintage (elenco paesi_lontani)
+  max_avvisi_per_esecuzione: 12   # oltre questo numero Telegram riceve un solo messaggio riassuntivo
+  risultati_per_chiamata: 100
+  paesi_esclusi: []               # nessun paese escluso: l'Italia è di nuovo dentro
+  rimuovi_vintage: true           # svuota la scheda Vintage: ora conta solo il Moderno
+  consegna_in: IT                 # eBay mostra solo annunci che spediscono qui
+  categoria_ebay: "625"           # Fotocamere e foto. Se non esce nulla, lascia vuoto: ""
 
-Prima di ogni richiesta Rete controlla robots.txt: se il sito non vuole, non si scarica nulla.
-"""
-import email as modulo_email
-import email.policy
-import hashlib
-import html
-import imaplib
-import json
-import logging
-import os
-import re
-from datetime import datetime, timedelta, timezone
-import xml.etree.ElementTree as ET
-from urllib.parse import urljoin
+avvisi:
+  soglia_punteggio: 5             # punteggio minimo (0-10) per l'avviso su un pezzo particolare
+  affare_sotto_mediana: 0.60      # affare = costo totale sotto il 60% della mediana di mercato
+  affare_minimo_annunci: 6        # servono almeno 6 annunci simili per calcolare la mediana
+  affare_prezzo_minimo_eur: 15    # sotto questa cifra non è un affare ma un errore o un pezzo rotto
+  riavvisa_se_ribasso: 0.20       # nuovo avviso se il prezzo scende di almeno il 20%
 
-from .rete import ErroreRete
+# Paese del venditore e sito eBay da interrogare per trovarlo.
+# I venditori romeni, bulgari, giapponesi ecc. pubblicano su siti eBay diversi:
+# se un paese non produce risultati, prova a cambiare il sito.
+paesi:
+  IT: EBAY_IT
+  RO: EBAY_DE
+  BG: EBAY_DE
+  PL: EBAY_PL
+  CZ: EBAY_DE
+  SK: EBAY_DE
+  HU: EBAY_DE
+  HR: EBAY_DE
+  SI: EBAY_DE
+  EE: EBAY_DE
+  LV: EBAY_DE
+  LT: EBAY_DE
+  GR: EBAY_DE
+  DE: EBAY_DE
+  AT: EBAY_AT
+  GB: EBAY_GB
+  JP: EBAY_US
+  CN: EBAY_US
+  HK: EBAY_US
+  ES: EBAY_ES
+  FR: EBAY_FR
+  PT: EBAY_ES
+  NL: EBAY_NL
+  BE: EBAY_BE
+  IE: EBAY_IE
+  DK: EBAY_DE
+  SE: EBAY_DE
+  FI: EBAY_DE
+  CH: EBAY_CH
+  RS: EBAY_DE
 
-log = logging.getLogger(__name__)
+# Paesi lontani: dogana, IVA all'importazione e tempi lunghi, ma prezzi spesso più bassi.
+# Hanno una quota fissa di chiamate (quota_lontani) e ricevono solo i gruppi di ricerca per pezzi particolari,
+# non quelli sull'usato comune, dove con spedizione e IVA non conviene quasi mai.
+# eBay non ha siti dedicati a Indonesia, Sudafrica ecc.: si cerca sul sito americano per sede del venditore.
+# In Africa c'è solo il Sudafrica: gli altri paesi sono quasi tutti senza protezione dell'acquirente reale.
+paesi_lontani:
+  AU: EBAY_AU
+  NZ: EBAY_AU
+  US: EBAY_US
+  CA: EBAY_CA
+  KR: EBAY_US
+  TW: EBAY_US
+  TH: EBAY_US
+  MY: EBAY_US
+  SG: EBAY_US
+  PH: EBAY_US
+  VN: EBAY_US
+  ID: EBAY_US
+  ZA: EBAY_US
+  TR: EBAY_DE
 
-SEGNI_VALUTA = [
-    ("€", "EUR"), ("eur", "EUR"), ("£", "GBP"), ("gbp", "GBP"), ("$", "USD"), ("usd", "USD"),
-    ("zł", "PLN"), ("zl", "PLN"), ("pln", "PLN"), ("kč", "CZK"), ("czk", "CZK"), ("huf", "HUF"),
-    ("ft", "HUF"), ("ron", "RON"), ("lei", "RON"), ("лв", "BGN"), ("bgn", "BGN"), ("¥", "JPY"),
-    ("円", "JPY"), ("jpy", "JPY"), ("hkd", "HKD"), ("cny", "CNY"),
-]
-USATO = re.compile(
-    r"\b(used|second[\s-]?hand|pre[\s-]?owned|gebraucht|usato|occasion|d'occasion|refurb\w*|"
-    r"ex[\s-]?demo|vintage|używan\w*|použit\w*|second main)\b", re.I)
-NUOVO = re.compile(r"^\s*(new|brand new|nuovo|neu|nowy|nový)\b", re.I)
+# Stima del costo di importazione dai paesi fuori UE (Regno Unito, Svizzera, Giappone, Cina, Australia ecc.).
+importazione:
+  iva_importazione: 0.22
+  soglia_sdoganamento_eur: 150
+  costo_sdoganamento_eur: 12      # commissione tipica del corriere oltre la soglia
+  dazio: 0.0                      # fotocamere e ottiche sono in genere esenti
+  spedizione_stimata_eur: 25      # usata quando l'annuncio non indica il costo di spedizione
 
+# Gruppi di ricerca. Le parentesi con le virgole significano "uno qualsiasi di questi".
+ricerche:
+  - nome: Corpi Sony E
+    classico: true
+    modalita: moderno
+    q: "(sony a7,sony a7 ii,sony a7 iii,sony a7r,sony a7s,sony a6000,sony a6100,sony a6300,sony a6400,sony nex-6,sony nex-7)"
+  - nome: Corpi Canon EOS mirrorless e compatte
+    classico: true
+    modalita: moderno
+    q: "(canon eos r,canon eos rp,canon eos m50,canon eos m6,canon eos m5,canon g7x,canon g5x,canon powershot g1x)"
+  - nome: Corpi Canon EOS reflex
+    classico: true
+    modalita: moderno
+    q: "(canon 5d mark ii,canon 5d mark iii,canon 6d,canon 7d,canon 80d,canon 70d,canon 60d,canon 750d,canon 800d,canon 700d,canon 600d,canon 1300d)"
+  - nome: Corpi Nikon reflex
+    classico: true
+    modalita: moderno
+    q: "(nikon d750,nikon d810,nikon d610,nikon d700,nikon d7100,nikon d7200,nikon d7000,nikon d5300,nikon d5500,nikon d3300,nikon d3400,nikon d90)"
+  - nome: Corpi Nikon Z e 1
+    classico: true
+    modalita: moderno
+    q: "(nikon z5,nikon z6,nikon z50,nikon z fc,nikon z7,nikon 1 j5,nikon 1 v1,nikon coolpix p7000)"
+  - nome: Corpi Fujifilm
+    classico: true
+    modalita: moderno
+    q: "(fujifilm x100,fujifilm x100s,fujifilm x100t,fujifilm x-t1,fujifilm x-t2,fujifilm x-e1,fujifilm x-e2,fujifilm x-e3,fujifilm x-pro1,fujifilm x-pro2,fujifilm x-t10,fujifilm x-t20,fujifilm x70)"
+  - nome: Corpi Panasonic Lumix
+    classico: true
+    modalita: moderno
+    q: "(panasonic gh3,panasonic gh4,panasonic gh5,panasonic g7,panasonic g9,panasonic gx80,panasonic gx85,panasonic gx9,panasonic lx100,panasonic s5,panasonic s1)"
+  - nome: Corpi Olympus e OM System
+    classico: true
+    modalita: moderno
+    q: "(olympus e-m1,olympus e-m5,olympus e-m10,olympus pen-f,olympus e-pl,olympus e-p5,olympus stylus,olympus tough tg-6,om system om-1)"
+  - nome: Corpi Pentax e Sigma
+    classico: true
+    modalita: moderno
+    q: "(pentax k-1,pentax k-3,pentax k-5,pentax k-70,pentax k-30,pentax kp,pentax k-s2,sigma fp,sigma dp merrill,sigma sd quattro)"
+  - nome: Corpi Leica e premium compatti
+    classico: true
+    modalita: moderno
+    q: "(leica q,leica q2,leica d-lux,leica v-lux,leica m10,leica m240,ricoh gr iii,ricoh gr ii,ricoh gr digital,sony rx1,sony rx100 vii,sony rx10)"
+  - nome: Medio formato digitale e mirrorless rare
+    classico: true
+    modalita: moderno
+    q: "(hasselblad x1d,hasselblad 500c,fujifilm gfx,pentax 645d,pentax 645z,phase one,mamiya 645 afd,leaf aptus,hasselblad h3d)"
+  - nome: Corpi vecchi digitali da collezione
+    classico: true
+    modalita: moderno
+    q: "(canon eos 1d,canon eos 5d classic,nikon d200,nikon d300,nikon d2x,kodak dcs,fujifilm s5 pro,epson r-d1,leica digilux,canon eos 10d,olympus e-1,olympus e-3)"
+  - nome: Videocamere e cinema digitali
+    classico: true
+    modalita: moderno
+    q: "(blackmagic pocket,blackmagic cinema camera,sony fx3,sony fx30,canon c100,canon c300,panasonic bgh1,red scarlet,sony a7s ii,sony fs5)"
+  - nome: Obiettivi Canon EF e RF
+    classico: true
+    modalita: moderno
+    q: "(canon ef 50mm,canon ef 85mm,canon ef 35mm,canon ef 24-70,canon ef 70-200,canon ef 100mm macro,canon ef 17-40,canon ef 16-35,canon rf 50mm,canon rf 35mm,canon ef-s 18-55,canon ef-s 10-18)"
+  - nome: Obiettivi Nikon F e Z
+    classico: true
+    modalita: moderno
+    q: "(nikon af-s 50mm,nikkor af-s 85mm,nikkor af-s 35mm,nikkor af-s 24-70,nikkor af-s 70-200,nikkor af-s 18-55,nikkor af-s 18-140,nikkor z 50mm,nikkor z 24-70,nikkor af-d 50mm,nikkor af 85mm)"
+  - nome: Obiettivi Sony E e FE
+    classico: true
+    modalita: moderno
+    q: "(sony fe 50mm,sony fe 85mm,sony fe 35mm,sony fe 28-70,sony fe 24-70,sony fe 70-200,sony e 18-55,sony e 16-50,sony e 35mm,sony e 50mm,sony zeiss 55mm,sony g master)"
+  - nome: Obiettivi Fujifilm X
+    classico: true
+    modalita: moderno
+    q: "(fujifilm xf 35mm,fujifilm xf 23mm,fujifilm xf 56mm,fujifilm xf 18-55,fujifilm xf 16-55,fujifilm xf 50-140,fujifilm xf 27mm,fujifilm xf 90mm,fujinon xf 10-24)"
+  - nome: Obiettivi Micro 4/3
+    classico: true
+    modalita: moderno
+    q: "(panasonic leica 25mm,lumix g 12-60,lumix g 14-42,lumix g 20mm,olympus m.zuiko 45mm,olympus m.zuiko 17mm,olympus m.zuiko 12-40,olympus m.zuiko 75mm,olympus m.zuiko 25mm,olympus 12-100)"
+  - nome: Obiettivi terze parti Sigma Tamron Tokina
+    classico: true
+    modalita: moderno
+    q: "(sigma art 35mm,sigma art 50mm,sigma 30mm 1.4,sigma 18-35,sigma 24-70,sigma 150-600,tamron sp 70-200,tamron 17-50,tamron 28-75,tamron 24-70,tokina 11-16,tokina 12-24)"
+  - nome: Obiettivi economici cinesi e coreani
+    classico: true
+    modalita: moderno
+    q: "(samyang 85mm,samyang 35mm,samyang 14mm,rokinon 50mm,viltrox 85mm,viltrox 33mm,viltrox 56mm,ttartisan 50mm,7artisans 35mm,7artisans 25mm,yongnuo 50mm,meike 85mm,laowa 12mm,sirui anamorphic)"
+  - nome: Obiettivi Pentax K e Sigma L
+    classico: true
+    modalita: moderno
+    q: "(pentax smc da,pentax da 35mm,pentax da 16-50,pentax fa 77mm,pentax d fa 100mm macro,sigma 35mm l-mount,leica l-mount lens,panasonic lumix s 50mm)"
+  - nome: Obiettivi Leica M e telemetro moderni
+    classico: true
+    modalita: moderno
+    q: "(voigtlander nokton,voigtlander color-skopar,zeiss zm,zeiss c sonnar,leica summicron,leica summarit,leica elmarit,zeiss batis,zeiss loxia,zeiss otus)"
+  - nome: Obiettivi teleobiettivi e zoom lunghi
+    classico: true
+    modalita: moderno
+    q: "(canon 100-400,canon 400mm f5.6,nikon 200-500,nikon 80-400,sigma 100-400,tamron 100-400,tamron 150-600,sony 200-600,sony 100-400,canon 300mm f4)"
+  - nome: Reflex entry level e di fascia media
+    classico: true
+    modalita: moderno
+    q: "(canon eos 2000d,canon eos 4000d,canon eos 250d,canon eos 90d,canon eos 77d,canon eos 7d mark ii,nikon d3500,nikon d5600,nikon d7500,nikon d500,nikon d850,pentax k-70,sony a58,sony a77)"
+  - nome: Mirrorless entry level e compatte moderne
+    classico: true
+    modalita: moderno
+    q: "(canon eos m100,canon eos m200,canon eos r10,canon eos r50,canon eos r7,sony zv-e10,sony a6600,sony a6700,sony a7c,sony a7 iv,nikon z30,nikon z6 ii,fujifilm x-s10,fujifilm x-s20,fujifilm x-h2,fujifilm x-t30,fujifilm x-t3,fujifilm x-t4,fujifilm x-pro3)"
+  - nome: Obiettivi Canon RF Nikon Z e L-mount recenti
+    classico: true
+    modalita: moderno
+    q: "(canon rf 24-105,canon rf 70-200,canon rf 85mm,canon rf 15-35,canon rf 100-400,canon rf 16mm,nikkor z 85mm,nikkor z 35mm,nikkor z 14-30,nikkor z 70-200,nikkor z 24-120,nikkor z dx,sigma 56mm 1.4,sigma 16mm 1.4,sigma 30mm 1.4 dc dn,tamron 17-28,tamron 70-180,tamron 28-200)"
 
-def slug(testo):
-    return re.sub(r"[^a-z0-9]+", "-", testo.lower()).strip("-")
+# Negozi e siti di usato, letti direttamente dalle loro pagine pubbliche.
+# Cacciatore legge robots.txt di ogni sito e salta ciò che vieta. Per aggiungere un negozio basta
+# copiare un blocco e cambiare nome e indirizzo; poi lancia "Verifica fonti" da Actions per controllare.
+# Alla prima lettura di una fonte nuova nessun avviso: il catalogo esistente diventa la base di partenza.
+fonti:
+  # MPB: usato garantito, legge le pagine pubbliche di categoria (robots.txt lo permette). Mostra un elemento per
+  # modello con il prezzo più basso disponibile.
+  - nome: MPB fotocamere
+    tipo: mpb
+    url: https://www.mpb.com
+    urls:
+      - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-mirrorless
+      - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-reflex
+      - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-compatte-di-qualita
+    max_pagine: 8
+    tipo_fisso: fotocamera
+    modalita: moderno
+    paese: IT
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: MPB obiettivi
+    tipo: mpb
+    url: https://www.mpb.com
+    urls:
+      - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-mirrorless
+      - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-per-reflex
+    max_pagine: 12
+    tipo_fisso: ottica
+    modalita: moderno
+    paese: IT
+    valuta: EUR
+    ogni_minuti: 180
+  # Negozi europei di usato moderno. Gli elenchi di Foto Erhardt, StudioSport e Kamera Express si leggono dalle pagine
+  # pubbliche di categoria (robots.txt lo permette); Nikon Service Dresden espone il catalogo Shopify.
+  - nome: Nikon Service Dresden
+    tipo: shopify
+    url: https://www.nikonservice-dresden.de
+    collezioni: [kameras-gebrauchtware, objektive-gebrauchtware]
+    modalita: moderno
+    paese: DE
+    valuta: EUR
+    ogni_minuti: 120
+  - nome: Foto Erhardt
+    tipo: pagine
+    url: https://www.foto-erhardt.de
+    urls:
+      - https://www.foto-erhardt.de/second-hand/gebrauchte-kameras.html
+      - https://www.foto-erhardt.de/second-hand/gebrauchte-objektive.html
+    link: "/second-hand/gebrauchte-(kameras|objektive)/"
+    titolo_togli: ["^\\s*In \\d+-\\d+ Werktagen", "Sofort lieferbar", "Auf Lager", "Zustand [A-D]"]
+    paginazione: percorso         # la pagina 2 è .../gebrauchte-kameras.html/2
+    max_pagine: 12
+    modalita: moderno
+    paese: DE
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: StudioSport
+    tipo: pagine
+    url: https://www.studiosport.fr
+    urls: [https://www.studiosport.fr/appareils-photo-doccasion-m67480.html]
+    link: "studiosport\\.fr/[a-z0-9-]+-a\\d+\\.html"
+    param_pagina: numPage
+    max_pagine: 10
+    modalita: moderno
+    paese: FR
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: Kamera Express
+    tipo: pagine
+    attivo: false                 # non ho potuto vedere il formato dei link prodotto: accendi e lancia "Verifica fonti"
+    url: https://www.kamera-express.nl
+    urls:
+      - https://www.kamera-express.nl/tweedehands-systeemcamera
+      - https://www.kamera-express.nl/tweedehands-zoomlens
+    link: "kamera-express\\.nl/[a-z0-9-]{12,}$"
+    pausa_secondi: 10             # il loro robots.txt chiede 10 secondi tra una richiesta e l'altra
+    max_pagine: 8
+    modalita: moderno
+    paese: NL
+    valuta: EUR
+    ogni_minuti: 240
+  # Subito, Vinted e Wallapop: Cacciatore non entra nei loro siti. Legge le mail di "ricerca salvata" che i siti
+  # mandano a te. Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
+  - nome: Subito
+    tipo: email
+    attivo: false                 # accendi (true) quando riesci ad accedere a Subito e a salvare una ricerca
+    modalita: moderno
+    mittenti: ["subito.it"]
+    link: "subito\\.it/"          # solo i link che puntano agli annunci
+    giorni: 3
+    paese: IT
+    valuta: EUR
+    spedizione_stimata_eur: 8
+    ogni_minuti: 30
+  - nome: Vinted
+    tipo: email
+    modalita: moderno
+    mittenti: ["vinted"]
+    link: "vinted\\.[a-z.]+/items/"
+    giorni: 3
+    paese_da_dominio: true        # vinted.it -> IT, vinted.fr -> FR ... (è il sito, non per forza il paese del venditore)
+    valuta: EUR
+    spedizione_stimata_eur: 8
+    ogni_minuti: 30
+  - nome: Wallapop
+    tipo: email
+    modalita: moderno
+    mittenti: ["wallapop"]
+    link: "wallapop\\.com/"
+    giorni: 3
+    paese: ES
+    valuta: EUR
+    spedizione_stimata_eur: 12
+    ogni_minuti: 30
+  # Modelli per altri tipi di sito (togli il cancelletto e compila):
+  #
+  # - nome: Negozio WooCommerce
+  #   tipo: woocommerce           # espone /wp-json/wc/store/v1/products
+  #   url: https://esempio.com
+  #   paese: DE
+  #   valuta: EUR
+  #
+  # - nome: Sito con dati strutturati
+  #   tipo: jsonld                # pagine di elenco con schema.org Product (quasi tutti i negozi moderni)
+  #   url: https://esempio.com
+  #   urls:                       # le pagine di elenco da leggere
+  #     - https://esempio.com/categoria/fotocamere-usate
+  #     - https://esempio.com/categoria/obiettivi-usati
+  #   paese: FR
+  #   valuta: EUR
+  #
+  # - nome: Feed di annunci
+  #   tipo: rss
+  #   url: https://esempio.com
+  #   urls: [https://esempio.com/feed.xml]
+  #   paese: CZ
+  #   valuta: CZK
+  #
+  # - nome: Sito senza dati strutturati
+  #   tipo: html
+  #   url: https://esempio.com
+  #   urls: [https://esempio.com/usato]
+  #   paese: PL
+  #   valuta: PLN
+  #   selettori:                  # selettori CSS
+  #     voce: ".product-item"
+  #     titolo: ".product-title"
+  #     prezzo: ".price"
+  #     link: "a"
+  #     immagine: "img"
 
+# Scheda Moderno del sito: solo fotocamere e obiettivi; queste parole scartano accessori e pezzi guasti.
+moderno:
+  escludi_vintage:               # materiale analogico o d'epoca: non è Moderno (guarda tutto il titolo)
+    - m42
+    - exakta
+    - exa
+    - bronica
+    - zenza bronica
+    - mamiya
+    - praktica
+    - pentacon
+    - zenit
+    - meyer-optik
+    - meyer optik
+    - rolleiflex
+    - rolleicord
+    - agfa
+    - polaroid
+    - yashica
+    - contax
+    - canon fd
+    - takumar
+    - rokkor
+    - kiev
+    - zorki
+    - helios
+    - jupiter
+    - industar
+    - pellicola
+    - analog
+    - analogique
+    - kleinbild
+    - film camera
+    - 35mm film
+    - mittelformat
+    - sucherkamera
+    - messsucher
+    - diaprojektor
+    - projektor
+    - vergroesserer
+    - enlarger
+    - spotmatic
+    - nikkormat
+    - praktisix
+  escludi_titolo:
+    - battery
+    - batteria
+    - grip
+    - charger
+    - caricabatterie
+    - strap
+    - tracolla
+    - bag
+    - borsa
+    - case only
+    - cover
+    - manual
+    - box only
+    - empty box
+    - lens cap
+    - hood
+    - paraluce
+    - for parts
+    - parts only
+    - broken
+    - defective
+    - faulty
+    - non funzionante
+    - per ricambi
+    - screen protector
+    - filter
+    - tripod
+    - flash only
+    - cage
+    - mount adapter
+    - viewfinder only
+    - follow focus
+    - matte box
+    - extension tube
+    - tubo di prolunga
+    - reverse ring
+    - close-up
+    - memory sd card
+    - scheda memoria
+    - carte memoire
+    - cleaning kit
+    - eye cup
+    - rear cap
+    - front cap
+    - hot shoe
+    - l-bracket
+    - lens board
+    - step-up
+    - mount ring
+    - card reader
+    - cable
+    - cavo
+    - cord
+    - wire
+    - usb
+    - hdmi
+    - adapter
+    - adattatore
+    - remote
+    - telecomando
+    - intervalometer
+    - dummy
+    - replacement
+    - ricambio
+    - compatible
+    - compatibile
+    - skin
+    - decal
+    - rig
+    - teleconverter
+    - converter
+    - anello
+    - diffuser
+    - softbox
+    - lamp
+    - lampada
+    - microphone
+    - microfono
+    - gimbal
+    - stabilizer
+    - button
+    - viewfinder
+    - eyecup
+    - eyepiece
+    - hotshoe
+    - plate
+    - bracket
+    - case
+    - pouch
+    - custodia
+    - sacca
+    - backpack
+    - zaino
+    - manuale
+    - istruzioni
+    - instruction
+    - stampa
+    - magazine
+    - rivista
+    - catalogue
+    - catalogo
+    - brochure
+    - leaflet
+    - pcb
+    - flex
+    - ribbon
+    - motherboard
+    - mainboard
+    - repair
+    - riparazione
+    - sostituzione
+    - teleprompter
+    - body cap
+    - lens board
+  prezzo_minimo_eur: 45           # sotto questa cifra un pezzo moderno è quasi sempre un accessorio
 
-def https(url, base=None):
-    if not url:
-        return None
-    if url.startswith("//"):
-        url = "https:" + url
-    if base:
-        url = urljoin(base + "/", url)
-    return url if url.startswith("https://") else None
+negozi:
+  tieni_tutto: true               # mostra sul sito tutto il catalogo usato dei negozi, non solo i pezzi rari (restano scartati film, borse, ecc.)
+  pausa_secondi: 2.0              # attesa tra due richieste allo stesso sito
+  # i negozi vendono anche accessori e materiale di consumo: questi titoli vengono scartati
+  escludi_titolo:
+    - film
+    - rullino
+    - pellicola
+    - polaroid pack
+    - instax
+    - workshop
+    - photowalk
+    - gift card
+    - voucher
+    - camera bag
+    - strap
+    - tracolla
+    - socks
+    - t-shirt
+    - poster
+    - book
+    - libro
+    - developing
+    - sviluppo
+    - battery
+    - batteria
+    - necklace
+    - pendant
+    - earrings
+    - bracelet
+    - keychain
+    - lampshade
+    - cufflinks
+    - jewelry
+    - jewellery
+    - candle
+    - ornament
+    - terrarium
+    - lens cap
+    - cleaning
+    - tripod
 
+# Allegro (Polonia). Spento di default: l'API di ricerca funziona solo per app verificate da Allegro.
+allegro:
+  attivo: false
+  frasi:
+    - zorki aparat
+    - kiev aparat
+    - obiektyw helios
+    - obiektyw jupiter
+    - pentacon six
+    - meyer optik
+    - mamiya aparat
+    - bronica
+    - fujica aparat
 
-def parse_prezzo(testo):
-    """Primo numero di un testo come valore decimale. Gestisce 1.234,56 e 1,234.56 e 1 299 zł."""
-    if testo is None:
-        return None
-    if isinstance(testo, (int, float)):
-        return float(testo)
-    m = re.search(r"\d[\d.,\s  ]*", str(testo))
-    if not m:
-        return None
-    n = re.sub(r"[\s  ]", "", m.group(0)).rstrip(".,")
-    if "," in n and "." in n:
-        dec = "," if n.rfind(",") > n.rfind(".") else "."
-        mig = "." if dec == "," else ","
-        n = n.replace(mig, "").replace(dec, ".")
-    elif "," in n:
-        n = n.replace(",", ".") if re.search(r",\d{1,2}$", n) and n.count(",") == 1 else n.replace(",", "")
-    elif "." in n:
-        if n.count(".") > 1 or re.search(r"\.\d{3}$", n):
-            n = n.replace(".", "")
-    try:
-        return float(n)
-    except ValueError:
-        return None
+# Peso di ogni termine nel punteggio di rarità. Il punteggio finale è la somma, massimo 10.
+# I modelli molto diffusi pesano 1, quelli difficili da trovare 3-6.
+punteggio:
+  # modelli di marca diffusa: peso 0, servono solo a confrontare i prezzi tra annunci dello stesso modello
+  comuni:
+    - sony a7
+    - sony a7 ii
+    - sony a7 iii
+    - sony a7r
+    - sony a7r ii
+    - sony a7s
+    - sony a6000
+    - sony a6100
+    - sony a6300
+    - sony a6400
+    - sony rx100
+    - sony zv-1
+    - canon eos r
+    - canon eos rp
+    - canon eos r6
+    - canon eos 5d
+    - canon eos 5d mark ii
+    - canon eos 5d mark iii
+    - canon eos 5d mark iv
+    - canon eos 6d
+    - canon eos 6d mark ii
+    - canon eos 80d
+    - canon eos 90d
+    - canon eos 7d
+    - canon eos 77d
+    - canon eos m50
+    - canon powershot g7 x
+    - canon powershot g9 x
+    - nikon d750
+    - nikon d810
+    - nikon d850
+    - nikon d7200
+    - nikon d7500
+    - nikon d5600
+    - nikon z5
+    - nikon z6
+    - nikon z6 ii
+    - nikon z fc
+    - fujifilm x100
+    - fujifilm x100s
+    - fujifilm x100t
+    - fujifilm x100f
+    - fujifilm x-t2
+    - fujifilm x-t3
+    - fujifilm x-t30
+    - fujifilm x-pro2
+    - fujifilm x-e3
+    - panasonic gh5
+    - panasonic gh4
+    - panasonic g9
+    - panasonic lumix s5
+    - olympus om-d e-m1
+    - olympus om-d e-m5
+    - leica q
+    - leica m10
+    - leica d-lux
+    - ricoh gr iii
+    - ricoh gr ii
+    - canon ae-1
+    - canon a-1
+    - pentax k1000
+    - pentax mx
+    - olympus om-1
+    - nikon fm2
+    - minolta x-700
+    - yashica fx-3
+    - praktica mtl
+    - nikkor 24mm
+    - nikkor 28mm
+    - nikkor 35mm
+    - nikkor 50mm
+    - nikkor 85mm
+    - nikkor 105mm
+    - nikkor 135mm
+    - nikkor 200mm
+    - canon fd 28mm
+    - canon fd 35mm
+    - canon fd 50mm
+    - canon fd 85mm
+    - canon fd 135mm
+    - canon ef 50mm
+    - canon ef 85mm
+    - canon ef 100mm
+    - canon ef 24-70
+    - canon ef 70-200
+    - canon ef-s 18-55
+    - canon ef-s 17-85
+    - takumar 28mm
+    - takumar 50mm
+    - takumar 55mm
+    - takumar 135mm
+    - minolta rokkor 50mm
+    - minolta md 50mm
+    - minolta md 35mm
+    - minolta md 135mm
+    - rokkor 58mm
+    - zuiko 28mm
+    - zuiko 50mm
+    - zuiko 135mm
+    - yashica ml 50mm
+    - tamron 90mm
+    - tamron 17-50
+    - tamron 70-300
+    - sigma 30mm
+    - sigma 18-35
+    - sigma 50mm
+    - nikon af-s 50mm
+    - nikkor af-s 50mm
+    - nikkor af-s 24-70
+    - sony fe 50mm
+    - sony fe 28-70
+    - sony e 18-55
+    - fujifilm xf 35mm
+    - fujifilm xf 18-55
+    - tamron sp 70-200
+    - sigma art 35mm
+    - tokina 11-16
+    - canon eos 600d
+    - canon eos 650d
+    - canon eos 700d
+    - canon eos 750d
+    - canon eos 800d
+    - canon eos 1100d
+    - canon eos 1200d
+    - canon eos 200d
+    - canon eos 60d
+    - canon eos 70d
+    - canon eos 7d mark ii
+    - nikon d3200
+    - nikon d3300
+    - nikon d3400
+    - nikon d5100
+    - nikon d5200
+    - nikon d5300
+    - nikon d5500
+    - nikon d7000
+    - nikon d7100
+    - nikon d90
+    - nikon d600
+    - nikon d610
+    - nikon d700
+    - nikon d800
+    - sony nex-5
+    - sony nex-6
+    - sony nex-7
+    - sony a5000
+    - sony a5100
+    - pentax k-5
+    - pentax k-3
+    - pentax k-70
+    - panasonic g7
+    - panasonic gx80
+    - panasonic gx7
+    - panasonic lx100
+    - panasonic g85
+    - olympus pen e-pl
+    - fujifilm x-e1
+    - fujifilm x-e2
+    - fujifilm x-t1
+    - fujifilm x-t20
+    - fujifilm x-pro1
+    - olympus mju ii
+    - olympus mju
+    - olympus stylus epic
+    - yashica t4
+    - contax t2
+    - contax t3
+    - ricoh gr1
+    - ricoh gr1v
+    - minolta tc-1
+    - nikon 35ti
+    - nikon 28ti
+    - leica minilux
+    - konica big mini
+    - pentax espio
+    - canon sure shot
+    - canon autoboy
+    - canon prima
+    - canon eos m6
+    - canon eos m5
+    - canon g7x
+    - canon g5x
+    - canon powershot g1x
+    - eos 5d mark ii
+    - canon 5d mark ii
+    - eos 5d mark iii
+    - canon 5d mark iii
+    - canon 6d
+    - eos 6d
+    - eos 7d
+    - canon 7d
+    - eos 80d
+    - canon 80d
+    - canon 70d
+    - eos 70d
+    - eos 60d
+    - canon 60d
+    - eos 750d
+    - canon 750d
+    - canon 800d
+    - eos 800d
+    - canon 700d
+    - eos 700d
+    - eos 600d
+    - canon 600d
+    - eos 1300d
+    - canon eos 1300d
+    - canon 1300d
+    - nikon z50
+    - nikon z7
+    - nikon 1 j5
+    - nikon 1 v1
+    - nikon coolpix p7000
+    - fujifilm x-t10
+    - fujifilm x70
+    - panasonic gh3
+    - panasonic gx85
+    - panasonic gx9
+    - panasonic s5
+    - panasonic s1
+    - olympus e-m1
+    - olympus e-m5
+    - olympus e-m10
+    - olympus pen-f
+    - olympus e-pl
+    - olympus e-p5
+    - olympus stylus
+    - olympus tough tg-6
+    - om system om-1
+    - pentax k-1
+    - pentax k-30
+    - pentax kp
+    - pentax k-s2
+    - sigma fp
+    - sigma dp merrill
+    - sigma sd quattro
+    - leica q2
+    - leica v-lux
+    - leica m240
+    - ricoh gr digital
+    - sony rx1
+    - sony rx100 vii
+    - sony rx10
+    - hasselblad x1d
+    - hasselblad 500c
+    - fujifilm gfx
+    - pentax 645d
+    - pentax 645z
+    - phase one
+    - mamiya 645 afd
+    - leaf aptus
+    - hasselblad h3d
+    - canon eos 1d
+    - eos 1d
+    - eos 5d classic
+    - canon eos 5d classic
+    - nikon d200
+    - nikon d300
+    - nikon d2x
+    - kodak dcs
+    - fujifilm s5 pro
+    - epson r-d1
+    - leica digilux
+    - eos 10d
+    - canon eos 10d
+    - olympus e-1
+    - olympus e-3
+    - blackmagic pocket
+    - blackmagic cinema camera
+    - sony fx3
+    - sony fx30
+    - canon c100
+    - canon c300
+    - panasonic bgh1
+    - red scarlet
+    - sony a7s ii
+    - sony fs5
+    - canon ef 35mm
+    - canon ef 100mm macro
+    - canon ef 17-40
+    - canon ef 16-35
+    - canon rf 50mm
+    - canon rf 35mm
+    - canon ef-s 10-18
+    - nikkor af-s 85mm
+    - nikkor af-s 35mm
+    - nikkor af-s 70-200
+    - nikkor af-s 18-55
+    - nikkor af-s 18-140
+    - nikkor z 50mm
+    - nikkor z 24-70
+    - nikkor af-d 50mm
+    - nikkor af 85mm
+    - sony fe 85mm
+    - sony fe 35mm
+    - sony fe 24-70
+    - sony fe 70-200
+    - sony e 16-50
+    - sony e 35mm
+    - sony e 50mm
+    - sony zeiss 55mm
+    - sony g master
+    - fujifilm xf 23mm
+    - fujifilm xf 56mm
+    - fujifilm xf 16-55
+    - fujifilm xf 50-140
+    - fujifilm xf 27mm
+    - fujifilm xf 90mm
+    - fujinon xf 10-24
+    - panasonic leica 25mm
+    - lumix g 12-60
+    - lumix g 14-42
+    - lumix g 20mm
+    - olympus m.zuiko 45mm
+    - olympus m.zuiko 17mm
+    - olympus m.zuiko 12-40
+    - olympus m.zuiko 75mm
+    - olympus m.zuiko 25mm
+    - olympus 12-100
+    - sigma art 50mm
+    - sigma 30mm 1.4
+    - sigma 24-70
+    - sigma 150-600
+    - tamron 28-75
+    - tamron 24-70
+    - tokina 12-24
+    - samyang 85mm
+    - samyang 35mm
+    - samyang 14mm
+    - rokinon 50mm
+    - viltrox 85mm
+    - viltrox 33mm
+    - viltrox 56mm
+    - ttartisan 50mm
+    - 7artisans 35mm
+    - 7artisans 25mm
+    - yongnuo 50mm
+    - meike 85mm
+    - laowa 12mm
+    - sirui anamorphic
+    - pentax smc da
+    - pentax da 35mm
+    - pentax da 16-50
+    - pentax fa 77mm
+    - pentax d fa 100mm macro
+    - sigma 35mm l-mount
+    - leica l-mount lens
+    - panasonic lumix s 50mm
+    - voigtlander nokton
+    - voigtlander color-skopar
+    - zeiss zm
+    - zeiss c sonnar
+    - leica summicron
+    - leica summarit
+    - leica elmarit
+    - zeiss batis
+    - zeiss loxia
+    - zeiss otus
+    - canon 100-400
+    - canon 400mm f5.6
+    - nikon 200-500
+    - nikon 80-400
+    - sigma 100-400
+    - tamron 100-400
+    - tamron 150-600
+    - sony 200-600
+    - sony 100-400
+    - canon 300mm f4
+  termini:
+    # cinepresa
+    bolex: 4
+    arriflex: 4
+    kinoptik: 5
+    speed panchro: 6
+    beaulieu: 3
+    eclair: 3
+    # fotocamere sovietiche
+    zorki: 1
+    zorkiy: 1
+    "зоркий": 1
+    fed: 1
+    "фэд": 1
+    kiev: 1
+    "киев": 1
+    "kiev 60": 3
+    "kiev 88": 3
+    "kiev 4": 2
+    zenit: 1
+    "зенит": 1
+    horizont: 3
+    "horizon 202": 4
+    lomo: 1
+    "lc-a": 3
+    smena: 1
+    salut: 3
+    lubitel: 2
+    moskva: 3
+    sputnik: 5
+    vega: 3
+    # ottiche sovietiche
+    helios: 1
+    "helios 40": 4
+    "helios 103": 2
+    "гелиос": 1
+    jupiter: 2
+    "jupiter-9": 3
+    "jupiter-3": 3
+    "юпитер": 2
+    industar: 1
+    "индустар": 1
+    tair: 3
+    "таир": 3
+    "mir-1": 2
+    "mir 1": 2
+    zenitar: 2
+    rubinar: 3
+    volna: 3
+    "orion-15": 3
+    "orion 15": 3
+    peleng: 2
+    kaleinar: 3
+    arsat: 2
+    # tedesche, francesi, svizzere
+    "meyer optik": 3
+    "meyer-optik": 3
+    trioplan: 4
+    primoplan: 4
+    biotar: 3
+    "pentacon six": 3
+    exakta: 2
+    "zeiss ikon": 2
+    contarex: 4
+    voigtlander: 2
+    "voigtländer": 2
+    bessa: 1
+    retina: 2
+    "rollei 35": 3
+    rolleiflex: 3
+    rolleicord: 2
+    alpa: 6
+    linhof: 4
+    sinar: 3
+    plaubel: 4
+    makina: 4
+    minox: 3
+    angenieux: 3
+    "som berthiot": 3
+    # giapponesi
+    fujica: 3
+    gw690: 3
+    gsw690: 3
+    mamiya: 2
+    "mamiya 7": 3
+    "mamiya press": 3
+    bronica: 2
+    topcon: 2
+    kowa: 3
+    miranda: 3
+    petri: 3
+    "konica hexar": 2
+    "yashica mat": 2
+    "olympus pen f": 3
+    "olympus xa": 2
+    "ricoh gr1": 3
+    "pentax 67": 2
+    "pentax auto 110": 4
+    "canon 7": 3
+    "nikon s2": 3
+    # cinesi
+    seagull: 2
+    phenix: 2
+    "great wall": 3
+    "pearl river": 3
+    hongmei: 3
+    dongfeng: 3
+    holga: 1
+    mitakon: 2
+    laowa: 1
+    ttartisan: 1
+    "7artisans": 1
+    # formati e usi insoliti
+    prototype: 5
+    prototyp: 5
+    prototip: 5
+    anamorphic: 5
+    widelux: 5
+    noblex: 4
+    subminiature: 3
+    stereo: 2
+    panoramic: 2
+    panorama: 1
+    "spy camera": 3
+    "aerial camera": 4
+    kinor: 4
+    military: 3
+    "militär": 3
+    bundeswehr: 3
+    nva: 3
+    "limited edition": 2
+    sonderedition: 2
+    # provenienza
+    ussr: 1
+    soviet: 1
+    cccp: 1
+    "ссср": 1
+    gdr: 1
+    ddr: 1
 
+  # annunci con queste parole vengono scartati (libri, stampe, ricambi non fotografici)
+  escludi:
+    - poster
+    - postcard
+    - cartolina
+    - print only
+    - sticker
+    - keychain
+    - magnet
+    - replica
+    - reproduction
+    - instruction manual only
+    - broken lens glass only
 
-def valuta_da_testo(testo, predefinita):
-    t = (testo or "").lower()
-    for segno, codice in SEGNI_VALUTA:
-        if segno in t:
-            return codice
-    return predefinita
-
-
-def _voce(fonte, ident, titolo, url, prezzo, valuta, immagine=None, condizione=None, nuovo=False,
-          pubblicato=None, asta=False):
-    return {
-        "id": f"{slug(fonte['nome'])}:{ident}",
-        "fonte": fonte["nome"],
-        "marketplace": "NEGOZIO",
-        "tipo_fonte": "negozio",
-        "titolo": (titolo or "").strip(),
-        "url": url,
-        "immagine": immagine,
-        "prezzo": prezzo,
-        "valuta": valuta,
-        "spedizione": None,
-        "valuta_spedizione": None,
-        "paese": fonte.get("paese"),
-        "condizione": condizione,
-        "asta": asta,
-        "fine_asta": None,
-        "feedback_pct": None,
-        "feedback_n": None,
-        "pubblicato": pubblicato,
-        "nuovo": nuovo,
-    }
-
-
-# ---------------------------------------------------------------- Shopify
-def leggi_shopify(fonte, rete):
-    base = fonte["url"].rstrip("/")
-    collezioni = fonte.get("collezioni") or [None]
-    per_pagina = 100
-    voci, completo = {}, True
-    for coll in collezioni:
-        percorso = f"/collections/{coll}/products.json" if coll else "/products.json"
-        for pagina in range(1, int(fonte.get("max_pagine", 10)) + 1):
-            try:
-                r = rete.get(base + percorso, params={"limit": per_pagina, "page": pagina})
-            except ErroreRete:
-                if pagina == 1 and not voci:
-                    raise
-                completo = False  # pagine successive non raggiunte: tengo quelle già lette
-                break
-            try:
-                prodotti = r.json().get("products", [])
-            except ValueError as e:
-                raise ValueError(f"{base}{percorso}: la risposta non è JSON ({e})") from e
-            for p in prodotti:
-                v = _da_shopify(fonte, base, p)
-                if v and fonte.get("solo_usato") and v["condizione"] != "Used":
-                    continue
-                if v:
-                    voci[v["id"]] = v
-            if len(prodotti) < per_pagina:
-                break
-        else:
-            completo = False  # raggiunto il limite di pagine: l'elenco potrebbe essere parziale
-    return list(voci.values()), completo
-
-
-def _da_shopify(fonte, base, p):
-    disponibili = [v for v in p.get("variants", []) if v.get("available")]
-    if not disponibili:
-        return None
-    prezzi = [parse_prezzo(v.get("price")) for v in disponibili]
-    prezzi = [x for x in prezzi if x is not None]
-    if not prezzi or not p.get("handle"):
-        return None
-    titoli_var = [str(v.get("title") or "") for v in disponibili] + [str(v.get("option1") or "") for v in disponibili]
-    testo_stato = " ".join(titoli_var + [str(p.get("product_type") or "")] + [str(t) for t in p.get("tags", [])])
-    usato = bool(USATO.search(testo_stato)) or bool(USATO.search(p.get("title") or ""))
-    nuovo = (not usato) and any(NUOVO.match(t) for t in titoli_var)
-    immagini = p.get("images") or []
-    immagine = https(immagini[0].get("src")) if immagini else None
-    return _voce(
-        fonte, p["handle"], p.get("title"), f"{base}/products/{p['handle']}", min(prezzi), fonte.get("valuta", "EUR"),
-        immagine=immagine, condizione="Used" if usato else ("New" if nuovo else None), nuovo=nuovo,
-        pubblicato=p.get("published_at"),
-    )
-
-
-# ------------------------------------------------------------ WooCommerce
-def leggi_woocommerce(fonte, rete):
-    base = fonte["url"].rstrip("/")
-    voci, completo = {}, True
-    per_pagina = int(fonte.get("per_pagina", 40))  # pagine piccole: i server WordPress lenti vanno in timeout con 100
-    for pagina in range(1, int(fonte.get("max_pagine", 15)) + 1):
-        parametri = {"per_page": per_pagina, "page": pagina, "orderby": "date", "order": "desc"}
-        if fonte.get("categoria"):
-            parametri["category"] = fonte["categoria"]
-        try:
-            r = rete.get(base + "/wp-json/wc/store/v1/products", params=parametri)
-        except ErroreRete:
-            if pagina == 1:
-                raise
-            completo = False
-            break
-        prodotti = r.json()
-        if not isinstance(prodotti, list):
-            raise ValueError(f"{base}: la risposta WooCommerce non è un elenco")
-        for p in prodotti:
-            if not p.get("is_in_stock", True):
-                continue
-            pr = p.get("prices") or {}
-            decimali = int(pr.get("currency_minor_unit", 2))
-            valore = parse_prezzo(pr.get("price"))
-            if valore is None or not p.get("permalink"):
-                continue
-            valore = valore / (10 ** decimali)
-            nomi = " ".join([c.get("name", "") for c in p.get("categories", [])] +
-                            [t.get("name", "") for t in p.get("tags", [])] + [p.get("name", "")])
-            usato = bool(USATO.search(nomi))
-            imgs = p.get("images") or []
-            voci[str(p["id"])] = _voce(
-                fonte, p["id"], html.unescape(p.get("name", "")), p["permalink"], valore,
-                pr.get("currency_code") or fonte.get("valuta", "EUR"),
-                immagine=https(imgs[0].get("src")) if imgs else None,
-                condizione="Used" if usato else None,
-            )
-        if len(prodotti) < per_pagina:
-            break
-    else:
-        completo = False
-    return list(voci.values()), completo
-
-
-# ---------------------------------------------------------------- JSON-LD
-def _tipi(nodo):
-    t = nodo.get("@type")
-    return [t] if isinstance(t, str) else list(t or [])
-
-
-def _nodi(dato):
-    if isinstance(dato, list):
-        for x in dato:
-            yield from _nodi(x)
-    elif isinstance(dato, dict):
-        yield dato
-        for chiave in ("@graph", "itemListElement", "item", "mainEntity"):
-            if chiave in dato:
-                yield from _nodi(dato[chiave])
-
-
-def leggi_jsonld(fonte, rete):
-    from bs4 import BeautifulSoup
-    voci, completo = {}, True
-    for indirizzo in fonte["urls"]:
-        r = rete.get(indirizzo)
-        soup = BeautifulSoup(r.text, "html.parser")
-        for tag in soup.find_all("script", attrs={"type": "application/ld+json"}):
-            try:
-                dato = json.loads(tag.string or tag.get_text() or "null")
-            except ValueError:
-                continue
-            for n in _nodi(dato):
-                if "Product" not in _tipi(n):
-                    continue
-                offerta = n.get("offers") or {}
-                if isinstance(offerta, list):
-                    offerta = offerta[0] if offerta else {}
-                if "outofstock" in str(offerta.get("availability", "")).lower() or \
-                        "soldout" in str(offerta.get("availability", "")).lower():
-                    continue
-                prezzo = parse_prezzo(offerta.get("price") or offerta.get("lowPrice"))
-                url = https(n.get("url") or offerta.get("url"), fonte["url"].rstrip("/"))
-                if prezzo is None or not url:
-                    continue
-                img = n.get("image")
-                if isinstance(img, list):
-                    img = img[0] if img else None
-                if isinstance(img, dict):
-                    img = img.get("url")
-                titolo = n.get("name") or ""
-                usato = bool(USATO.search(titolo + " " + str(offerta.get("itemCondition", ""))))
-                voci[url] = _voce(fonte, slug(url.split("//", 1)[-1])[:80], titolo, url, prezzo,
-                                  offerta.get("priceCurrency") or fonte.get("valuta", "EUR"),
-                                  immagine=https(img, fonte["url"].rstrip("/")),
-                                  condizione="Used" if usato else None)
-    return list(voci.values()), completo
-
-
-# -------------------------------------------------------------------- RSS
-def _nome_locale(tag):
-    return tag.rsplit("}", 1)[-1]
-
-
-def leggi_rss(fonte, rete):
-    voci = {}
-    for indirizzo in fonte["urls"]:
-        r = rete.get(indirizzo)
-        radice = ET.fromstring(r.content)
-        for el in radice.iter():
-            if _nome_locale(el.tag) not in ("item", "entry"):
-                continue
-            campi = {}
-            immagine = None
-            for f in el:
-                nome = _nome_locale(f.tag)
-                if nome in ("enclosure", "thumbnail", "content") and (f.get("url") or "").startswith("http"):
-                    immagine = immagine or f.get("url")
-                elif nome == "link":
-                    campi["link"] = f.get("href") or (f.text or "").strip()
-                elif nome in ("title", "description", "summary", "content", "guid", "pubDate", "published", "updated"):
-                    campi[nome] = (f.text or "").strip()
-            testo = f"{campi.get('title', '')} {campi.get('description', campi.get('summary', ''))}"
-            testo_pulito = re.sub(r"<[^>]+>", " ", testo)
-            prezzo = None
-            m = re.search(r"(?:[€£$]\s?\d[\d.,\s]*|\d[\d.,\s]*\s?(?:€|eur|£|gbp|\$|usd|zł|pln|kč|czk|ft|huf|lei|ron|лв|bgn))",
-                          testo_pulito, re.I)
-            if m:
-                prezzo = parse_prezzo(m.group(0))
-            url = https(campi.get("link"))
-            if not url or prezzo is None:
-                continue
-            valuta = valuta_da_testo(m.group(0), fonte.get("valuta", "EUR"))
-            voci[url] = _voce(fonte, slug(campi.get("guid") or url.split("//", 1)[-1])[:80], campi.get("title"),
-                              url, prezzo, valuta, immagine=https(immagine),
-                              pubblicato=campi.get("pubDate") or campi.get("published"))
-    return list(voci.values()), True
-
-
-# ------------------------------------------------------------------- HTML
-def leggi_html(fonte, rete):
-    from bs4 import BeautifulSoup
-    sel = fonte["selettori"]
-    base = fonte["url"].rstrip("/")
-    voci = {}
-    for indirizzo in fonte["urls"]:
-        r = rete.get(indirizzo)
-        soup = BeautifulSoup(r.text, "html.parser")
-        for blocco in soup.select(sel["voce"]):
-            t = blocco.select_one(sel["titolo"])
-            a = blocco.select_one(sel.get("link", sel["titolo"]))
-            p = blocco.select_one(sel["prezzo"])
-            if not (t and a and p):
-                continue
-            url = https(a.get("href") if a.name == "a" else (a.find("a") or {}).get("href"), base)
-            testo_prezzo = p.get_text(" ", strip=True)
-            prezzo = parse_prezzo(testo_prezzo)
-            if not url or prezzo is None:
-                continue
-            im = blocco.select_one(sel["immagine"]) if sel.get("immagine") else None
-            src = None
-            if im is not None:
-                src = im.get("src") or im.get("data-src")
-            voci[url] = _voce(fonte, slug(url.split("//", 1)[-1])[:80], t.get_text(" ", strip=True), url, prezzo,
-                              valuta_da_testo(testo_prezzo, fonte.get("valuta", "EUR")),
-                              immagine=https(src, base))
-    return list(voci.values()), True
-
-
-# ------------------------------------------------------------------- Etsy
-ETSY_API = "https://openapi.etsy.com/v3/application/listings/active"
-
-
-def _paese_etsy(annuncio):
-    """Paese di spedizione del venditore, se l'API lo fornisce (profilo di spedizione o negozio)."""
-    for nodo in (annuncio.get("shipping_profile"), annuncio.get("shop"), annuncio):
-        if isinstance(nodo, dict):
-            for chiave in ("origin_country_iso", "ships_from_country_iso", "country_iso"):
-                v = nodo.get(chiave)
-                if isinstance(v, str) and len(v) == 2:
-                    return v.upper()
-    return None
-
-
-def _prezzo_etsy(p):
-    if isinstance(p, dict):
-        try:
-            return float(p["amount"]) / float(p.get("divisor") or 100), p.get("currency_code")
-        except (KeyError, TypeError, ValueError, ZeroDivisionError):
-            return None, None
-    return parse_prezzo(p), None
-
-
-def leggi_etsy(fonte, rete):
-    """Cerca per parole chiave con l'API ufficiale v3. Serve una chiave personale di Etsy."""
-    chiave = os.environ.get("ETSY_API_KEY", "").strip()
-    segreto = os.environ.get("ETSY_API_SECRET", "").strip()
-    if not chiave:
-        raise ErroreRete("mancano i secret ETSY_API_KEY (e ETSY_API_SECRET): crea la chiave su etsy.com/developers")
-    intestazioni = {"x-api-key": f"{chiave}:{segreto}" if segreto else chiave}
-    per_pagina = 100
-    voci, letti, senza_paese = {}, 0, 0
-    scarta_ignoti = fonte.get("paese_ignoto", "scarta") == "scarta"
-    for frase in fonte["parole"]:
-        for pagina in range(int(fonte.get("max_pagine", 1))):
-            parametri = {"keywords": frase, "limit": per_pagina, "offset": pagina * per_pagina,
-                         "sort_on": "created", "sort_order": "desc", "includes": "Images,Shipping"}
-            try:
-                dati = rete.get(ETSY_API, parametri, intestazioni=intestazioni, robots=False).json()
-            except ErroreRete as e:
-                if "401" in str(e) or "403" in str(e):
-                    raise ErroreRete("Etsy rifiuta la chiave (errata, o ancora in attesa di approvazione)") from e
-                if not voci and letti == 0:
-                    raise
-                log.warning("Etsy, ricerca «%s» pagina %d non letta: %s", frase, pagina + 1, e)
-                break
-            risultati = dati.get("results") or []
-            letti += len(risultati)
-            for r in risultati:
-                if r.get("state") not in (None, "active"):
-                    continue
-                url = (r.get("url") or "").split("?")[0]
-                prezzo, valuta = _prezzo_etsy(r.get("price"))
-                if not https(url) or prezzo is None or not r.get("listing_id"):
-                    continue
-                paese = _paese_etsy(r) or fonte.get("paese")
-                if paese is None and scarta_ignoti:
-                    senza_paese += 1
-                    continue
-                immagini = r.get("images") or []
-                im = (immagini[0].get("url_570xN") or immagini[0].get("url_fullxfull")) if immagini else None
-                ts = r.get("original_creation_timestamp") or r.get("creation_timestamp")
-                pubblicato = None
-                if isinstance(ts, (int, float)):
-                    pubblicato = datetime.fromtimestamp(ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                v = _voce(fonte, str(r["listing_id"]), r.get("title"), url, prezzo,
-                          valuta or fonte.get("valuta", "EUR"), immagine=https(im), pubblicato=pubblicato)
-                v["paese"] = paese
-                voci[v["id"]] = v
-            if len(risultati) < per_pagina:
-                break
-    if letti and not voci and senza_paese:
-        raise ErroreRete("Etsy non indica il paese del venditore: scartati tutti gli annunci. "
-                         "Se vuoi vederli lo stesso, metti paese_ignoto: tieni nella fonte")
-    if senza_paese:
-        log.warning("Etsy: %d annunci scartati perché il paese del venditore non è indicato.", senza_paese)
-    return list(voci.values()), False  # una ricerca per parole non è un catalogo: niente rimozione dei venduti
-
-
-# ------------------------------------------------------------- Email (IMAP)
-PREZZO_TESTO = re.compile(r"(?:€|eur)\s?\d[\d.,]*|\d{1,3}(?:[.\s\u00a0\u202f]\d{3})+(?:,\d{1,2})?\s?(?:€|eur)|\d[\d.,]*\s?(?:€|eur)", re.I)
-LINK_DA_SALTARE = re.compile(r"unsubscribe|disiscri|preferenz|privacy|cookie|mailto:|/help|assistenza|termini|facebook|instagram|apple\.com|google\.com/store", re.I)
-TLD_PAESI = {"it": "IT", "fr": "FR", "de": "DE", "es": "ES", "pl": "PL", "cz": "CZ", "lt": "LT", "nl": "NL",
-             "be": "BE", "at": "AT", "pt": "PT", "sk": "SK", "hu": "HU", "ro": "RO", "hr": "HR", "gr": "GR",
-             "se": "SE", "dk": "DK", "fi": "FI", "uk": "GB"}
-
-
-def _paese_da_dominio(url):
-    host = re.sub(r"^https?://", "", url).split("/")[0].lower()
-    if host.endswith(".co.uk"):
-        return "GB"
-    return TLD_PAESI.get(host.rsplit(".", 1)[-1])
-
-
-def estrai_da_html(html, fonte):
-    """Trova gli annunci in una mail: ogni link all'annuncio con titolo, prezzo e foto nello stesso blocco."""
-    from bs4 import BeautifulSoup
-    soup = BeautifulSoup(html, "html.parser")
-    filtro = re.compile(fonte["link"]) if fonte.get("link") else None
-    trovati = {}
-    for a in soup.find_all("a", href=True):
-        url = a["href"].strip()
-        if not url.startswith("https://") or LINK_DA_SALTARE.search(url):
-            continue
-        if filtro and not filtro.search(url):
-            continue
-        blocco = a
-        for _ in range(7):
-            if PREZZO_TESTO.search(blocco.get_text(" ", strip=True)):
-                break
-            if blocco.parent is None:
-                break
-            blocco = blocco.parent
-        testo_blocco = blocco.get_text(" ", strip=True)
-        m = PREZZO_TESTO.search(testo_blocco)
-        if not m:
-            continue
-        # un blocco con più annunci diversi non è affidabile per questo link: si resta al link stesso
-        titolo = a.get_text(" ", strip=True)
-        if not titolo or PREZZO_TESTO.fullmatch(titolo):
-            img_alt = (a.find("img") or {}).get("alt") if a.find("img") else None
-            titolo = img_alt or ""
-        if not titolo:
-            righe = [t.strip() for t in blocco.stripped_strings if not PREZZO_TESTO.search(t) and len(t.strip()) > 3]
-            titolo = righe[0] if righe else ""
-        if len(titolo) < 4:
-            continue
-        immagine = None
-        for im in blocco.find_all("img"):
-            src = im.get("src") or im.get("data-src") or ""
-            try:
-                piccola = int(im.get("width") or 100) <= 5 or int(im.get("height") or 100) <= 5
-            except ValueError:
-                piccola = False
-            if src.startswith("https://") and not piccola and not re.search(r"pixel|track|open\.|logo|icon", src, re.I):
-                immagine = src
-                break
-        chiave = url.split("?")[0] if len(url.split("?")[0].split("//", 1)[-1]) > 20 else url
-        if chiave in trovati:
-            continue
-        trovati[chiave] = {"url": url.split("#")[0], "titolo": titolo, "prezzo": parse_prezzo(m.group(0)),
-                           "valuta": valuta_da_testo(m.group(0), fonte.get("valuta", "EUR")), "immagine": immagine}
-    return list(trovati.values())
-
-
-def leggi_email(fonte, rete):
-    """Legge, in sola lettura, le mail di ricerca salvata arrivate negli ultimi giorni.
-
-    Nessun accesso ai siti: Cacciatore vede solo ciò che i siti mandano a te per mail.
-    """
-    utente = os.environ.get("EMAIL_IMAP_UTENTE", "").strip()
-    password = os.environ.get("EMAIL_IMAP_PASSWORD", "").strip()
-    if not utente or not password:
-        raise ErroreRete("mancano i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD")
-    giorni = int(fonte.get("giorni", 3))
-    dal = (datetime.now(timezone.utc) - timedelta(days=giorni)).strftime("%d-%b-%Y")
-    voci = {}
-    try:
-        casella = imaplib.IMAP4_SSL(fonte.get("server", "imap.gmail.com"), timeout=30)
-        try:
-            casella.login(utente, password)
-            casella.select(fonte.get("cartella", "INBOX"), readonly=True)  # sola lettura: non tocca le mail
-            numeri = set()
-            for mittente in fonte["mittenti"]:
-                stato, risposta = casella.search(None, "SINCE", dal, "FROM", f'"{mittente}"')
-                if stato == "OK" and risposta and risposta[0]:
-                    numeri.update(risposta[0].split())
-            for n in sorted(numeri, key=int)[-int(fonte.get("max_mail", 60)):]:
-                stato, parti = casella.fetch(n, "(BODY.PEEK[])")
-                if stato != "OK" or not parti or not isinstance(parti[0], tuple):
-                    continue
-                msg = modulo_email.message_from_bytes(parti[0][1], policy=modulo_email.policy.default)
-                corpo = msg.get_body(preferencelist=("html",))
-                if corpo is None:
-                    continue
-                data = None
-                try:
-                    data = msg["date"].datetime.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                except Exception:  # noqa: BLE001
-                    pass
-                for e in estrai_da_html(corpo.get_content(), fonte):
-                    ident = hashlib.sha1(e["url"].split("?")[0].encode()).hexdigest()[:16]
-                    v = _voce(fonte, ident, e["titolo"], e["url"], e["prezzo"], e["valuta"],
-                              immagine=e["immagine"], pubblicato=data)
-                    if fonte.get("paese_da_dominio"):
-                        v["paese"] = _paese_da_dominio(e["url"]) or fonte.get("paese")
-                    voci[v["id"]] = v
-        finally:
-            try:
-                casella.logout()
-            except Exception:  # noqa: BLE001
-                pass
-    except imaplib.IMAP4.error as e:
-        raise ErroreRete(f"accesso alla posta rifiutato ({e}): controlla utente e password per app") from e
-    except OSError as e:
-        raise ErroreRete(f"posta non raggiungibile: {e}") from e
-    return list(voci.values()), False
-
-
-# ------------------------------------------------- elenchi di negozi generici
-def leggi_pagine(fonte, rete):
-    """Pagine di categoria di un negozio senza API: ogni link a un prodotto con il prezzo nello stesso blocco.
-
-    Paginazione: ?page=N (param_pagina), oppure il numero in coda al percorso (paginazione: percorso).
-    MPB mostra un elemento per modello con il prezzo più basso disponibile.
-    """
-    from bs4 import BeautifulSoup
-    base = fonte["url"].rstrip("/")
-    if fonte.get("pausa_secondi") and hasattr(rete, "pausa_host"):
-        rete.pausa_host[base] = float(fonte["pausa_secondi"])
-    voci = {}
-    for indirizzo in fonte["urls"]:
-        for pagina in range(1, int(fonte.get("max_pagine", 6)) + 1):
-            params, url = None, indirizzo
-            if pagina > 1:
-                if fonte.get("paginazione") == "percorso":
-                    url = indirizzo.rstrip("/") + f"/{pagina}"
-                else:
-                    params = {fonte.get("param_pagina", "page"): pagina}
-            r = rete.get(url, params=params)
-            soup = BeautifulSoup(r.text, "html.parser")
-            for a in soup.find_all("a", href=True):
-                a["href"] = https(a["href"].strip(), base) or a["href"]
-            trovati = estrai_da_html(str(soup), {**fonte, "link": fonte.get("link", r"/prodotto/")})
-            nuovi = [e for e in trovati if e["url"] not in voci]
-            for e in nuovi:
-                titolo = re.sub(r"\s+", " ", PREZZO_TESTO.sub("", e["titolo"])).strip(" -–—·|")
-                if len(titolo) < 4 or e["prezzo"] is None:
-                    continue
-                coda = slug(e["url"].split("//", 1)[-1].split("/", 1)[-1])[:80]
-                voci[e["url"]] = _voce(fonte, coda, titolo, e["url"], e["prezzo"], e["valuta"], immagine=e["immagine"])
-            if not nuovi:
-                break  # pagina oltre l'ultima o già vista
-    return list(voci.values()), False
-
-
-LETTORI = {
-    "shopify": leggi_shopify,
-    "woocommerce": leggi_woocommerce,
-    "jsonld": leggi_jsonld,
-    "rss": leggi_rss,
-    "html": leggi_html,
-    "etsy": leggi_etsy,
-    "email": leggi_email,
-    "mpb": leggi_pagine,
-    "pagine": leggi_pagine,
-}
-
-
-def scarica(fonte, rete):
-    """Restituisce (voci, completo). Se completo è vero, gli annunci della fonte non più presenti sono venduti."""
-    lettore = LETTORI.get(fonte.get("tipo"))
-    if not lettore:
-        raise ValueError(f"tipo di fonte sconosciuto: {fonte.get('tipo')!r}")
-    return lettore(fonte, rete)
+  # annunci con queste parole ricevono un avviso di prudenza
+  sospetti:
+    - whatsapp
+    - telegram
+    - paypal friends
+    - "paypal f&f"
+    - contact me
+    - copy of
+    - no returns
