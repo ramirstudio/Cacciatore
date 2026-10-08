@@ -53,6 +53,18 @@ paesi:
   FI: EBAY_DE
   CH: EBAY_CH
   RS: EBAY_DE
+  MD: EBAY_DE
+  UA: EBAY_DE
+  NO: EBAY_DE
+  IS: EBAY_DE
+  LU: EBAY_DE
+  CY: EBAY_GB
+  MT: EBAY_GB
+  BA: EBAY_DE
+  ME: EBAY_DE
+  MK: EBAY_DE
+  AL: EBAY_DE
+  LI: EBAY_CH
 
 # Paesi lontani: dogana, IVA all'importazione e tempi lunghi, ma prezzi spesso più bassi.
 # Hanno una quota fissa di chiamate (quota_lontani) e ricevono solo i gruppi di ricerca per pezzi particolari,
@@ -265,20 +277,258 @@ fonti:
     paese: FR
     valuta: EUR
     ogni_minuti: 180
-  - nome: Kamera Express
+  # Kamera Express: elenco caricato con JavaScript e API vietata dal robots.txt, non leggibile.
+
+  # ---- Benelux, Spagna, Portogallo
+  - nome: Foto de Vakman
     tipo: pagine
-    attivo: false                 # non ho potuto vedere il formato dei link prodotto: accendi e lancia "Verifica fonti"
-    url: https://www.kamera-express.nl
+    url: https://www.fotodevakman.nl
     urls:
-      - https://www.kamera-express.nl/tweedehands-systeemcamera
-      - https://www.kamera-express.nl/tweedehands-zoomlens
-    link: "kamera-express\\.nl/[a-z0-9-]{12,}$"
-    pausa_secondi: 10             # il loro robots.txt chiede 10 secondi tra una richiesta e l'altra
-    max_pagine: 8
+      - https://www.fotodevakman.nl/occasions/foto/systeemcamera
+      - https://www.fotodevakman.nl/occasions/foto/spiegelreflex
+      - https://www.fotodevakman.nl/occasions/objectieven/objectieven
+    link: "fotodevakman\\.nl/artikel/\\d+/[a-z0-9-]+\\.html"
+    max_pagine: 5
+    modalita: moderno
+    paese: NL
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: Camera-Tweedehands
+    tipo: pagine                  # Lightspeed: un elenco per marca, pagine .../page2.html
+    url: https://www.camera-tweedehands.nl
+    urls:
+      - https://www.camera-tweedehands.nl/canon/canon-cameras/canon-mirrorless-cameras/
+      - https://www.camera-tweedehands.nl/canon/canon-cameras/canon-spiegelreflex-cameras/
+      - https://www.camera-tweedehands.nl/nikon/nikon-cameras/nikon-mirrorless-cameras/
+      - https://www.camera-tweedehands.nl/nikon/nikon-cameras/nikon-spiegelreflex-cameras/
+      - https://www.camera-tweedehands.nl/sony/sony-cameras/sony-mirrorless-cameras/
+      - https://www.camera-tweedehands.nl/sony/sony-cameras/sony-spiegelreflex-cameras/
+      - https://www.camera-tweedehands.nl/fujifilm/fujifilm-cameras/fujifilm-x-cameras/
+      - https://www.camera-tweedehands.nl/olympus-mft/olympus-mft-cameras/
+      - https://www.camera-tweedehands.nl/canon/canon-lenzen/canon-rf-lenzen/
+      - https://www.camera-tweedehands.nl/canon/canon-lenzen/canon-ef-lenzen/
+      - https://www.camera-tweedehands.nl/nikon/nikon-lenzen/nikon-z-lenzen/
+      - https://www.camera-tweedehands.nl/nikon/nikon-lenzen/nikon-f-lenzen/
+      - https://www.camera-tweedehands.nl/sony/sony-lenzen/sony-mirrorless-lenzen/
+      - https://www.camera-tweedehands.nl/fujifilm/fujifilm-lenzen/fujifilm-x-lenzen/
+      - https://www.camera-tweedehands.nl/olympus-mft/olympus-mft-lenzen/
+    link: "camera-tweedehands\\.nl/[a-z0-9-]+\\.html"
+    paginazione: pagina_html
+    max_pagine: 5
     modalita: moderno
     paese: NL
     valuta: EUR
     ogni_minuti: 240
+  - nome: PCH Pro Shop
+    tipo: pagine
+    url: https://pch.be
+    urls: [https://pch.be/fr/occasions.html]
+    link: "pch\\.be/fr/occasions/[a-z0-9/-]*-occasion(-\\d+)?\\.html"
+    param_pagina: p
+    max_pagine: 13
+    modalita: moderno
+    paese: BE
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: Liva
+    tipo: woocommerce
+    url: https://www.liva.be
+    categoria: "3295,3297"        # occasion: appareils photo, objectifs (molto Leica)
+    modalita: moderno
+    paese: BE
+    valuta: EUR
+    ogni_minuti: 240
+  - nome: Foto Trade Occasion
+    tipo: woocommerce
+    url: https://occasion.fototrade.lu
+    # ibride, reflex digitali, compatte digitali e obiettivi AF per marca (fuori la categoria con FD, AI, M42)
+    categoria: "619,562,582,730,665,550,566,519,518,548,605,988,586,653,974"
+    modalita: moderno
+    paese: LU
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: Hi-Techwonder
+    tipo: woocommerce
+    url: https://hi-techwonder.com
+    categoria: "1547,1548"        # câmaras usadas, objetivas usadas
+    modalita: moderno
+    paese: PT
+    valuta: EUR
+    ogni_minuti: 240
+  - nome: Foto K
+    tipo: pagine
+    url: https://fotok.es
+    urls:
+      - https://fotok.es/material-segunda-mano/camaras-segunda-mano
+      - https://fotok.es/material-segunda-mano/objetivos-segunda-mano
+    link: "fotok\\.es/(camaras|objetivos)-segunda-mano/[a-z0-9-]+"
+    max_pagine: 5
+    modalita: moderno
+    paese: ES
+    valuta: EUR
+    ogni_minuti: 180
+
+  # ---- Nord Europa (il Crawl-delay dei siti viene rispettato da solo)
+  - nome: Kamerastore
+    tipo: shopify                 # Helsinki, grande negozio di solo usato
+    url: https://kamerastore.com
+    collezioni: [mirrorless-digital-cameras, slr-digital-cameras, mirrorless-lenses, slr-dslr-lenses]
+    escludi_tag: [Usage-Film]
+    max_pagine: 5
+    modalita: moderno
+    paese: FI
+    valuta: EUR
+    ogni_minuti: 120
+  - nome: Scandinavian Photo SE
+    tipo: pagine
+    url: https://www.scandinavianphoto.se
+    urls: [https://www.scandinavianphoto.se/begagnat/kamera, https://www.scandinavianphoto.se/begagnat/objektiv]
+    link: "scandinavianphoto\\.se/[a-z0-9-]+/[a-z0-9.-]+-[bt]\\d{6}"
+    max_pagine: 5
+    modalita: moderno
+    paese: SE
+    valuta: SEK
+    ogni_minuti: 240
+  - nome: Scandinavian Photo NO
+    tipo: pagine
+    url: https://www.scandinavianphoto.no
+    urls: [https://www.scandinavianphoto.no/brukt/kamera, https://www.scandinavianphoto.no/brukt/objektiv]
+    link: "scandinavianphoto\\.no/[a-z0-9-]+/[a-z0-9.-]+-[bt]\\d{6}"
+    max_pagine: 5
+    modalita: moderno
+    paese: NO
+    valuta: NOK
+    ogni_minuti: 240
+  - nome: Goecker
+    tipo: pagine
+    url: https://www.goecker.dk
+    urls:
+      - https://www.goecker.dk/brugt?ProduktType=Camera
+      - https://www.goecker.dk/brugt?ProduktType=Lens
+    link: "goecker\\.dk/(brugt-1/)?[a-z0-9-]+-(used|demo)(-\\d+)?([?#]|$)"
+    param_pagina: PageNum
+    max_pagine: 6
+    modalita: moderno
+    paese: DK
+    valuta: DKK
+    ogni_minuti: 180
+  - nome: Fotoman
+    tipo: woocommerce
+    url: https://fotoman.fi
+    categoria: kaytetyt-kamerat-ja-objektiivit
+    scarta: ["^\\s*MYYTY"]        # venduti: restano in elenco con questo nome
+    modalita: moderno
+    paese: FI
+    valuta: EUR
+    ogni_minuti: 180
+  - nome: Jas Kamerakauppa
+    tipo: pagine
+    url: https://jaskamerakauppa.fi
+    urls: [https://jaskamerakauppa.fi/en/51-used]
+    link: "jaskamerakauppa\\.fi/en/\\d+-[a-z0-9-]+\\.html"
+    max_pagine: 5
+    modalita: moderno
+    paese: FI
+    valuta: EUR
+    ogni_minuti: 240
+  - nome: Götaplatsens Foto
+    tipo: pagine
+    url: https://www.gotaplatsensfoto.se
+    urls: [https://www.gotaplatsensfoto.se/begagnat]
+    link: "gotaplatsensfoto\\.se/begagnat/[a-z0-9-]+-begagnad(-\\d+)?"
+    max_pagine: 1                 # le pagine successive si caricano solo con JavaScript: si leggono i primi 24
+    modalita: moderno
+    paese: SE
+    valuta: SEK
+    ogni_minuti: 180
+  - nome: Foto-Jørgen
+    tipo: pagine
+    url: https://www.fotojorgen.no
+    urls: [https://www.fotojorgen.no/produkter/brukt/kamera, https://www.fotojorgen.no/produkter/brukt/objektiv]
+    link: "fotojorgen\\.no/produkter/brukt/(kamera|objektiv)/brukt-"
+    max_pagine: 1
+    modalita: moderno
+    paese: NO
+    valuta: NOK
+    ogni_minuti: 240
+
+  # ---- Est Europa e Moldavia
+  - nome: Fotopanorama
+    tipo: pagine
+    url: https://www.fotopanorama.pl
+    urls:
+      - https://www.fotopanorama.pl/category/pl/k-o-m-i-s-uzywane-aparaty-cyfrowe
+      - https://www.fotopanorama.pl/category/pl/k-o-m-i-s-uzywane-obiektywy
+    link: "fotopanorama\\.pl/pl/[a-z0-9-]+\\.html"
+    paginazione: percorso
+    max_pagine: 5
+    modalita: moderno
+    paese: PL
+    valuta: PLN
+    ogni_minuti: 180
+  - nome: Fotoplus
+    tipo: pagine
+    url: https://www.fotoplus.hu
+    urls:
+      - https://www.fotoplus.hu/hasznalt-termekek/fenykepezpgep
+      - https://www.fotoplus.hu/hasznalt-termekek/objektiv
+    link: "fotoplus\\.hu/[A-Za-z0-9-]*[Hh]asznal"
+    paginazione: virgola
+    max_pagine: 4
+    modalita: moderno
+    paese: HU
+    valuta: HUF
+    ogni_minuti: 180
+  - nome: Photosynthesis
+    tipo: pagine
+    url: https://magazin.photosynthesis.bg
+    urls:
+      - https://magazin.photosynthesis.bg/bg/939-bezogledalni-fotoaparati
+      - https://magazin.photosynthesis.bg/bg/938-dslr-fotoaparati
+      - https://magazin.photosynthesis.bg/bg/941-obektivi-za-bezogledalni-fotoaparati
+      - https://magazin.photosynthesis.bg/bg/940-obektivi-za-dslr
+    link: "magazin\\.photosynthesis\\.bg/bg/\\d+-[a-z0-9-]+\\.html"
+    param_pagina: p
+    max_pagine: 4
+    modalita: moderno
+    paese: BG
+    valuta: EUR
+    ogni_minuti: 240
+  - nome: F64 second hand
+    tipo: vtex                    # catalogo pubblico in JSON (/api/ non è vietato dal robots.txt)
+    url: https://www.f64.ro
+    categorie: [consignatie/aparate-foto-digitale--sh-, consignatie/obiective-foto--sh-]
+    max_pagine: 6
+    modalita: moderno
+    paese: RO
+    valuta: RON
+    ogni_minuti: 180
+  - nome: ProLaika e-bazár
+    tipo: pagine
+    url: https://www.prolaika.sk
+    urls: [https://www.prolaika.sk/e-shop/e-bazar/c-394.xhtml]
+    link: "prolaika\\.sk/e-shop/[a-z0-9-]+/p-\\d+\\.xhtml"
+    max_pagine: 1                 # il robots.txt vieta le pagine successive
+    modalita: moderno
+    paese: SK
+    valuta: EUR
+    ogni_minuti: 240
+  - nome: Makler.md
+    tipo: pagine                  # annunci di privati in Moldavia: spedizione in Italia da concordare
+    url: https://makler.md
+    urls:
+      - https://makler.md/ru/audio-photo-video/photo/digital-cameras
+      - https://makler.md/ru/audio-photo-video/optics/lenses
+    link: "makler\\.md/ru/audio-photo-video/(photo/digital-cameras|optics/lenses)/an/\\d+"
+    pagina_iniziale: 0            # la seconda pagina è ?page=1
+    max_pagine: 4
+    valute_ammesse: [MDL, USD, EUR]   # fuori i prezzi in rubli della Transnistria
+    spedizione_stimata_eur: 40
+    modalita: moderno
+    paese: MD
+    valuta: MDL
+    ogni_minuti: 180
+
   # Subito, Vinted e Wallapop: Cacciatore non entra nei loro siti. Legge le mail di "ricerca salvata" che i siti
   # mandano a te. Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
   - nome: Subito
@@ -294,6 +544,7 @@ fonti:
     ogni_minuti: 30
   - nome: Vinted
     tipo: email
+    attivo: false                 # nessuna email di avviso ricevuta: spento
     modalita: moderno
     mittenti: ["vinted"]
     link: "vinted\\.[a-z.]+/items/"
@@ -304,6 +555,7 @@ fonti:
     ogni_minuti: 30
   - nome: Wallapop
     tipo: email
+    attivo: false                 # nessuna email di avviso ricevuta: spento
     modalita: moderno
     mittenti: ["wallapop"]
     link: "wallapop\\.com/"
@@ -513,6 +765,7 @@ moderno:
 negozi:
   tieni_tutto: true               # mostra sul sito tutto il catalogo usato dei negozi, non solo i pezzi rari (restano scartati film, borse, ecc.)
   pausa_secondi: 2.0              # attesa tra due richieste allo stesso sito
+  tempo_massimo_minuti: 15        # oltre, i negozi rimasti si leggono al giro dopo
   # i negozi vendono anche accessori e materiale di consumo: questi titoli vengono scartati
   escludi_titolo:
     - film
