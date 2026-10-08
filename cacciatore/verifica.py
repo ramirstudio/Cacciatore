@@ -56,7 +56,7 @@ def controlla(fonte, cfg, rete):
         if v.get("nuovo") and fonte.get("escludi_nuovo", True):
             continue
         punteggio, _, _ = val.valuta(v["titolo"])
-        if punteggio < 1 and fonte.get("tipo") != "email":
+        if punteggio < 1 and fonte.get("tipo") != "email" and not cfg.get("negozi", {}).get("tieni_tutto", False):
             continue
         rilevanti.append((punteggio, v))
     rilevanti.sort(key=lambda x: -x[0])
