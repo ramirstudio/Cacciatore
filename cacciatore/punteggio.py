@@ -45,11 +45,16 @@ class Valutatore:
         self.termini = [(t, w, _regex(t)) for t, w in unici.values()]
         self.escludi = [_regex(x) for x in p.get("escludi", [])]
         self.sospetti = [(x, _regex(x)) for x in p.get("sospetti", [])]
+        self.escludi_moderno = [_regex(x) for x in cfg.get("moderno", {}).get("escludi_titolo", [])]
         self.escludi_negozio = [_regex(x) for x in cfg.get("negozi", {}).get("escludi_titolo", [])]
 
     def da_scartare(self, titolo):
         t = normalizza(titolo)
         return any(r.search(t) for r in self.escludi)
+
+    def da_scartare_moderno(self, titolo):
+        t = normalizza(titolo)
+        return any(r.search(t) for r in self.escludi_moderno)
 
     def da_scartare_negozio(self, titolo):
         t = normalizza(titolo)
