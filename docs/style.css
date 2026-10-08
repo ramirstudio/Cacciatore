@@ -113,6 +113,8 @@ main { margin-top: 18px; }
   border: 0; border-bottom: 1px solid var(--filo); padding: 2px 0; cursor: pointer;
 }
 .azioni button[aria-pressed=true] { border-bottom-color: var(--mattone); color: var(--mattone); }
+.altri { grid-column: 1 / -1; padding: 24px 0; }
+.altri button { font: inherit; color: var(--mattone); background: none; border: 0; border-bottom: 1px solid var(--mattone); padding: 4px 0; cursor: pointer; }
 .vuoto { padding: 40px 0; color: var(--tenue); max-width: 36em; }
 
 @media (min-width: 860px) {
@@ -140,6 +142,8 @@ main { margin-top: 18px; }
 .comandi button[aria-pressed="true"] { background: var(--mattone); border-color: var(--mattone); color: #fff; }
 .comandi .gruppo { display: flex; }
 .comandi .gruppo button + button { border-left: 0; }
+.comandi .modalita button { width: auto; padding: 0 16px; font: inherit; font-size: 15px; display: block; }
+.comandi .modalita span { font-size: 12px; opacity: .75; margin-left: 4px; }
 .comandi .sole { display: none; }
 :root[data-theme="dark"] .comandi .luna { display: none; }
 :root[data-theme="dark"] .comandi .sole { display: block; }
