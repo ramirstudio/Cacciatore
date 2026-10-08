@@ -31,9 +31,11 @@ log = logging.getLogger(__name__)
 SEGNI_VALUTA = [
     ("€", "EUR"), ("eur", "EUR"), ("£", "GBP"), ("gbp", "GBP"), ("$", "USD"), ("usd", "USD"),
     ("zł", "PLN"), ("zl", "PLN"), ("pln", "PLN"), ("kč", "CZK"), ("czk", "CZK"), ("huf", "HUF"),
-    ("ft", "HUF"), ("ron", "RON"), ("lei", "RON"), ("лв", "BGN"), ("bgn", "BGN"), ("¥", "JPY"),
-    ("円", "JPY"), ("jpy", "JPY"), ("hkd", "HKD"), ("cny", "CNY"),
+    ("ft", "HUF"), ("mdl", "MDL"), ("ron", "RON"), ("lei", "RON"), ("лв", "BGN"), ("bgn", "BGN"), ("¥", "JPY"),
+    ("円", "JPY"), ("jpy", "JPY"), ("hkd", "HKD"), ("cny", "CNY"), ("sek", "SEK"), ("nok", "NOK"), ("dkk", "DKK"),
+    ("chf", "CHF"), ("rsd", "RSD"), ("din", "RSD"), ("uah", "UAH"), ("грн", "UAH"), ("руб", "PRB"),
 ]
+# "kr" (corone svedesi, norvegesi, danesi) non dice quale: vale la valuta della fonte.
 USATO = re.compile(
     r"\b(used|second[\s-]?hand|pre[\s-]?owned|gebraucht|usato|occasion|d'occasion|refurb\w*|"
     r"ex[\s-]?demo|vintage|używan\w*|použit\w*|second main)\b", re.I)
@@ -132,7 +134,10 @@ def leggi_shopify(fonte, rete):
                 prodotti = r.json().get("products", [])
             except ValueError as e:
                 raise ValueError(f"{base}{percorso}: la risposta non è JSON ({e})") from e
+            escludi_tag = [t.lower() for t in fonte.get("escludi_tag", [])]
             for p in prodotti:
+                if escludi_tag and any(str(t).lower() in escludi_tag for t in p.get("tags", [])):
+                    continue
                 v = _da_shopify(fonte, base, p)
                 if v and fonte.get("solo_usato") and v["condizione"] != "Used":
                     continue
@@ -417,7 +422,13 @@ def leggi_etsy(fonte, rete):
 
 
 # ------------------------------------------------------------- Email (IMAP)
-PREZZO_TESTO = re.compile(r"(?:€|eur)\s?\d[\d.,]*|\d{1,3}(?:[.\s\u00a0\u202f]\d{3})+(?:,\d{1,2})?\s?(?:€|eur)|\d[\d.,]*\s?(?:€|eur)", re.I)
+_VALUTA_RE = (r"(?:€|euro?|kr\.?|sek|nok|dkk|zł|zl|pln|kč|czk|ft|huf|lei|ron|mdl|usd|\$|лв\.?|bgn|din\.?|rsd|chf|£|руб\.?)"
+              r"(?![a-zà-ÿа-я])")
+_NUMERO_MIGLIAIA = r"\d{1,3}(?:[.\s\u00a0\u202f]\d{3})+(?:[.,]\d{1,2}|,-)?"
+PREZZO_TESTO = re.compile(
+    rf"(?<![a-zà-ÿа-я]){_VALUTA_RE}\s?(?:{_NUMERO_MIGLIAIA}|\d[\d.,]*)"
+    rf"|{_NUMERO_MIGLIAIA}\s?{_VALUTA_RE}"
+    rf"|\d[\d.,]*-?\s?{_VALUTA_RE}", re.I)
 LINK_DA_SALTARE = re.compile(r"unsubscribe|disiscri|preferenz|privacy|cookie|mailto:|/help|assistenza|termini|facebook|instagram|apple\.com|google\.com/store", re.I)
 TLD_PAESI = {"it": "IT", "fr": "FR", "de": "DE", "es": "ES", "pl": "PL", "cz": "CZ", "lt": "LT", "nl": "NL",
              "be": "BE", "at": "AT", "pt": "PT", "sk": "SK", "hu": "HU", "ro": "RO", "hr": "HR", "gr": "GR",
@@ -585,10 +596,16 @@ def leggi_pagine(fonte, rete):
         for pagina in range(1, int(fonte.get("max_pagine", 6)) + 1):
             params, url = None, indirizzo
             if pagina > 1:
-                if fonte.get("paginazione") == "percorso":
-                    url = indirizzo.rstrip("/") + f"/{pagina}"
+                numero = pagina - 1 + int(fonte.get("pagina_iniziale", 1))  # makler.md conta da 0
+                modo = fonte.get("paginazione")
+                if modo == "percorso":
+                    url = indirizzo.rstrip("/") + f"/{numero}"
+                elif modo == "virgola":  # fotoplus.hu: .../objektiv,2
+                    url = indirizzo.rstrip("/") + f",{numero}"
+                elif modo == "pagina_html":  # Lightspeed: .../categoria/page2.html
+                    url = indirizzo.rstrip("/") + f"/page{numero}.html"
                 else:
-                    params = {fonte.get("param_pagina", "page"): pagina}
+                    params = {fonte.get("param_pagina", "page"): numero}
             r = rete.get(url, params=params)
             soup = BeautifulSoup(r.text, "html.parser")
             for a in soup.find_all("a", href=True):
@@ -602,10 +619,48 @@ def leggi_pagine(fonte, rete):
                 titolo = re.sub(r"\s+", " ", titolo).strip(" -–—·|")
                 if len(titolo) < 4 or e["prezzo"] is None:
                     continue
+                if fonte.get("valute_ammesse") and e["valuta"] not in fonte["valute_ammesse"]:
+                    continue
                 coda = slug(e["url"].split("//", 1)[-1].split("/", 1)[-1])[:80]
                 voci[e["url"]] = _voce(fonte, coda, titolo, e["url"], e["prezzo"], e["valuta"], immagine=e["immagine"])
             if not nuovi:
                 break  # pagina oltre l'ultima o già vista
+    return list(voci.values()), False
+
+
+# ------------------------------------------------------------------ VTEX
+def leggi_vtex(fonte, rete):
+    """Negozi VTEX (F64): l'elenco HTML si riempie con JavaScript, ma il catalogo pubblico è in JSON."""
+    base = fonte["url"].rstrip("/")
+    voci, per_pagina = {}, 50
+    for categoria in fonte["categorie"]:
+        for pagina in range(int(fonte.get("max_pagine", 6))):
+            inizio = pagina * per_pagina
+            r = rete.get(f"{base}/api/catalog_system/pub/products/search/{categoria.strip('/')}",
+                         params={"_from": inizio, "_to": inizio + per_pagina - 1})
+            prodotti = r.json()
+            if not isinstance(prodotti, list):
+                raise ValueError(f"{base}: la risposta VTEX non è un elenco")
+            for p in prodotti:
+                articoli = p.get("items") or []
+                offerta = {}
+                for it in articoli:
+                    for venditore in it.get("sellers") or []:
+                        o = venditore.get("commertialOffer") or {}
+                        if o.get("AvailableQuantity", 0) > 0 and o.get("Price"):
+                            offerta = o
+                            break
+                    if offerta:
+                        break
+                if not offerta or not p.get("link"):
+                    continue
+                immagini = (articoli[0].get("images") or []) if articoli else []
+                voci[str(p.get("productId"))] = _voce(
+                    fonte, p.get("productId"), p.get("productName", ""), https(p["link"], base),
+                    float(offerta["Price"]), fonte.get("valuta", "EUR"),
+                    immagine=https(immagini[0].get("imageUrl")) if immagini else None, condizione="Used")
+            if len(prodotti) < per_pagina:
+                break
     return list(voci.values()), False
 
 
@@ -619,6 +674,7 @@ LETTORI = {
     "email": leggi_email,
     "mpb": leggi_pagine,
     "pagine": leggi_pagine,
+    "vtex": leggi_vtex,
 }
 
 
@@ -654,4 +710,8 @@ def scarica(fonte, rete):
     lettore = LETTORI.get(fonte.get("tipo"))
     if not lettore:
         raise ValueError(f"tipo di fonte sconosciuto: {fonte.get('tipo')!r}")
-    return lettore(fonte, rete)
+    voci, completo = lettore(fonte, rete)
+    if fonte.get("scarta"):  # titoli da ignorare per questa fonte (venduti, prenotati...)
+        scarta = re.compile("|".join(fonte["scarta"]), re.I)
+        voci = [v for v in voci if not scarta.search(v.get("titolo") or "")]
+    return voci, completo
