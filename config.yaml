@@ -3,11 +3,12 @@
 generale:
   conserva_giorni: 10             # dopo quanti giorni senza vederlo un annuncio sparisce dal sito
   chiamate_per_esecuzione: 90     # limite eBay: 5.000 chiamate al giorno; 90 x 48 esecuzioni = 4.320
-  quota_moderno: 30               # di queste 90, quante vanno ai gruppi Moderno (vicini e lontani)
+  quota_moderno: 90               # di queste 90, quante vanno ai gruppi Moderno (vicini e lontani)
   quota_lontani: 15               # quante vanno ai paesi lontani per i gruppi vintage (elenco paesi_lontani)
   max_avvisi_per_esecuzione: 12   # oltre questo numero Telegram riceve un solo messaggio riassuntivo
   risultati_per_chiamata: 100
-  paesi_esclusi: [IT]             # i venditori italiani non interessano
+  paesi_esclusi: []               # nessun paese escluso: l'Italia è di nuovo dentro
+  rimuovi_vintage: true           # svuota la scheda Vintage: ora conta solo il Moderno
   consegna_in: IT                 # eBay mostra solo annunci che spediscono qui
   categoria_ebay: "625"           # Fotocamere e foto. Se non esce nulla, lascia vuoto: ""
 
@@ -22,6 +23,7 @@ avvisi:
 # I venditori romeni, bulgari, giapponesi ecc. pubblicano su siti eBay diversi:
 # se un paese non produce risultati, prova a cambiare il sito.
 paesi:
+  IT: EBAY_IT
   RO: EBAY_DE
   BG: EBAY_DE
   PL: EBAY_PL
@@ -83,24 +85,6 @@ importazione:
 
 # Gruppi di ricerca. Le parentesi con le virgole significano "uno qualsiasi di questi".
 ricerche:
-  - nome: Fotocamere sovietiche e dell'Est
-    q: "(zorki,fed,kiev,zenit,horizont,lomo,smena,salut,lubitel,moskva,sputnik,vega)"
-  - nome: Ottiche sovietiche
-    q: "(helios,jupiter,industar,tair,mir-1,zenitar,rubinar,volna,orion-15,peleng,kaleinar)"
-  - nome: Medio e grande formato
-    q: "(mamiya,bronica,fujica,pentacon six,rolleiflex,rolleicord,yashica mat,linhof,graflex,sinar,wista)"
-  - nome: Ottiche e fotocamere tedesche e francesi
-    q: "(meyer optik,trioplan,primoplan,biotar,exakta,zeiss ikon,contarex,voigtlander,angenieux,som berthiot)"
-  - nome: Giapponesi particolari
-    q: "(topcon,kowa,miranda,petri,konica hexar,olympus pen,olympus xa,ricoh gr1,pentax 67,canon 7)"
-  - nome: Cinesi e ottiche moderne di nicchia
-    q: "(seagull,phenix,great wall,pearl river,holga,ttartisan,7artisans,mitakon,laowa)"
-  - nome: Formati e usi insoliti
-    q: "(anamorphic,widelux,noblex,horizon 202,subminiature,minox,spy camera,stereo camera,panoramic camera,aerial camera)"
-  - nome: Classici a buon prezzo
-    classico: true                # avviso solo se è un affare, non per il punteggio
-    lontani: false
-    q: "(canon ae-1,pentax k1000,olympus om-1,nikon fm2,minolta x-700,yashica fx-3,canon a-1,pentax mx,praktica mtl)"
   - nome: Corpi Sony E
     classico: true
     modalita: moderno
@@ -193,108 +177,85 @@ ricerche:
     classico: true
     modalita: moderno
     q: "(canon 100-400,canon 400mm f5.6,nikon 200-500,nikon 80-400,sigma 100-400,tamron 100-400,tamron 150-600,sony 200-600,sony 100-400,canon 300mm f4)"
-  - nome: Cinepresa e ottiche cine
-    q: "(bolex,arriflex,super 8 camera,16mm camera,c-mount lens,cine lens,kinoptik,speed panchro,beaulieu,eclair)"
-  - nome: Ottiche usate economiche
+  - nome: Reflex entry level e di fascia media
     classico: true
-    lontani: false
-    q: "(nikkor,canon fd,minolta rokkor,minolta md,takumar,smc pentax,zuiko,yashica ml,tamron adaptall,sigma 30mm,tokina)"
-  - nome: Compatte e telemetro a buon prezzo
+    modalita: moderno
+    q: "(canon eos 2000d,canon eos 4000d,canon eos 250d,canon eos 90d,canon eos 77d,canon eos 7d mark ii,nikon d3500,nikon d5600,nikon d7500,nikon d500,nikon d850,pentax k-70,sony a58,sony a77)"
+  - nome: Mirrorless entry level e compatte moderne
     classico: true
-    lontani: false
-    q: "(olympus mju,yashica t4,contax t2,ricoh gr1,minolta tc-1,nikon 35ti,leica minilux,konica big mini,pentax espio,canon sure shot,canon autoboy)"
+    modalita: moderno
+    q: "(canon eos m100,canon eos m200,canon eos r10,canon eos r50,canon eos r7,sony zv-e10,sony a6600,sony a6700,sony a7c,sony a7 iv,nikon z30,nikon z6 ii,fujifilm x-s10,fujifilm x-s20,fujifilm x-h2,fujifilm x-t30,fujifilm x-t3,fujifilm x-t4,fujifilm x-pro3)"
+  - nome: Obiettivi Canon RF Nikon Z e L-mount recenti
+    classico: true
+    modalita: moderno
+    q: "(canon rf 24-105,canon rf 70-200,canon rf 85mm,canon rf 15-35,canon rf 100-400,canon rf 16mm,nikkor z 85mm,nikkor z 35mm,nikkor z 14-30,nikkor z 70-200,nikkor z 24-120,nikkor z dx,sigma 56mm 1.4,sigma 16mm 1.4,sigma 30mm 1.4 dc dn,tamron 17-28,tamron 70-180,tamron 28-200)"
 
 # Negozi e siti di usato, letti direttamente dalle loro pagine pubbliche.
 # Cacciatore legge robots.txt di ogni sito e salta ciò che vieta. Per aggiungere un negozio basta
 # copiare un blocco e cambiare nome e indirizzo; poi lancia "Verifica fonti" da Actions per controllare.
 # Alla prima lettura di una fonte nuova nessun avviso: il catalogo esistente diventa la base di partenza.
 fonti:
-  - nome: Analogue Shop
-    tipo: shopify                 # il negozio espone /products.json
-    url: https://analogueshop.com
-    paese: NL
-    valuta: EUR
-    ogni_minuti: 120
-  - nome: Analogue Wonderland
-    tipo: shopify
-    url: https://analoguewonderland.co.uk
-    paese: GB
-    valuta: GBP                   # Regno Unito: il costo di importazione viene stimato
-    ogni_minuti: 120
-  - nome: Safelight Berlin
-    tipo: shopify
-    url: https://safelightberlin.com
-    paese: DE
-    valuta: EUR
-    ogni_minuti: 120
-  - nome: Kamerastore
-    tipo: shopify
-    url: https://kamerastore.com
-    collezioni: [all]
-    solo_usato: true              # il catalogo contiene anche nuovo, film e servizi
-    paese: FI
-    valuta: EUR
-    ogni_minuti: 120
-  - nome: Nikon Service Dresden
-    tipo: shopify
-    url: https://www.nikonservice-dresden.de
-    collezioni: [kameras-gebrauchtware, objektive-gebrauchtware, zubehor-gebrauchtware]
-    paese: DE
-    valuta: EUR
-    ogni_minuti: 120
-  - nome: Japan Camera Hunter
-    tipo: woocommerce
-    url: https://www.japancamerahunter.com
-    categoria: cameras-for-sale
-    paese: JP
-    valuta: USD
-    ogni_minuti: 240
-  # Etsy: API ufficiale con la tua chiave (secret ETSY_API_KEY ed ETSY_API_SECRET). Metti attivo: true quando le hai.
-  - nome: Etsy
-    tipo: etsy
-    attivo: false
-    parole:                       # una chiamata per frase; Etsy non capisce OR né virgolette
-      - vintage lens m42
-      - soviet lens
-      - helios 44
-      - jupiter lens
-      - industar lens
-      - zeiss jena lens
-      - pentacon lens
-      - vintage camera lens adapter
-      - ussr camera
-      - east german camera
-      - japanese vintage lens
-      - vintage rangefinder camera
-    max_pagine: 1
-    paese_ignoto: scarta          # se l'API non dice dove spedisce il venditore, l'annuncio non entra
+  # MPB: usato garantito, legge le pagine pubbliche di categoria (robots.txt lo permette). Mostra un elemento per
+  # modello con il prezzo più basso disponibile.
+  - nome: MPB fotocamere
+    tipo: mpb
+    url: https://www.mpb.com
+    urls:
+      - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-mirrorless
+      - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-reflex
+      - https://www.mpb.com/it-it/categoria/fotocamere-usate/fotocamere-compatte-di-qualita
+    max_pagine: 8
+    tipo_fisso: fotocamera
+    modalita: moderno
+    paese: IT
     valuta: EUR
     ogni_minuti: 180
-  # Subito e Vinted: Cacciatore non entra nei loro siti. Legge le mail di "ricerca salvata" che i siti mandano a te.
-  # Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
+  - nome: MPB obiettivi
+    tipo: mpb
+    url: https://www.mpb.com
+    urls:
+      - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-mirrorless
+      - https://www.mpb.com/it-it/categoria/obiettivi-foto-e-video-usati/obiettivi-per-reflex
+    max_pagine: 12
+    tipo_fisso: ottica
+    modalita: moderno
+    paese: IT
+    valuta: EUR
+    ogni_minuti: 180
+  # Subito, Vinted e Wallapop: Cacciatore non entra nei loro siti. Legge le mail di "ricerca salvata" che i siti
+  # mandano a te. Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
   - nome: Subito
     tipo: email
     attivo: false
-    modalita: entrambe
+    modalita: moderno
     mittenti: ["subito.it"]
     link: "subito\\.it/"          # solo i link che puntano agli annunci
     giorni: 3
     paese: IT
-    permetti_paesi: [IT]          # Subito è italiano: l'esclusione dei venditori italiani qui non vale
     valuta: EUR
     spedizione_stimata_eur: 8
     ogni_minuti: 30
   - nome: Vinted
     tipo: email
     attivo: false
-    modalita: entrambe
+    modalita: moderno
     mittenti: ["vinted"]
     link: "vinted\\.[a-z.]+/items/"
     giorni: 3
     paese_da_dominio: true        # vinted.it -> IT, vinted.fr -> FR ... (è il sito, non per forza il paese del venditore)
-    permetti_paesi: [IT]
     valuta: EUR
     spedizione_stimata_eur: 8
+    ogni_minuti: 30
+  - nome: Wallapop
+    tipo: email
+    attivo: false
+    modalita: moderno
+    mittenti: ["wallapop"]
+    link: "wallapop\\.com/"
+    giorni: 3
+    paese: ES
+    valuta: EUR
+    spedizione_stimata_eur: 12
     ogni_minuti: 30
   # Modelli per altri tipi di sito (togli il cancelletto e compila):
   #
