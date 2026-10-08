@@ -33,7 +33,9 @@ def controlla(fonte, cfg, rete):
     try:
         voci, completo = negozi.scarica(fonte, rete)
     except Vietato:
-        esito["nota"] = "robots.txt vieta la lettura oppure il sito non è raggiungibile da qui: la fonte non può essere usata"
+        motivo = getattr(rete, "motivo_robots", {}).get(base)
+        esito["nota"] = (f"fonte non usabile: {motivo}" if motivo
+                         else "robots.txt vieta la lettura di queste pagine: la fonte non può essere usata")
         esito["robots"] = False
         return esito
     except (ErroreRete, ValueError, KeyError) as e:
