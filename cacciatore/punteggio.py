@@ -3,12 +3,13 @@ import re
 import unicodedata
 
 TIPO_OTTICA = re.compile(
-    r"(?<![a-z0-9])(lens|lenses|objektiv|obiektyw|obiectiv|objectif|obiettivo|lente|"
+    r"(?<![a-z0-9])(lens|lenses|lenzen|objektiv|objektive|obiektyw|obiectiv|objectif|objectifs|objectief|objectieven|obiettivo|obiettivi|lente|zoomlens|"
     r"helios|jupiter|industar|tair|zenitar|rubinar|volna|kaleinar|peleng|trioplan|primoplan|biotar|"
     r"\d{2,3}\s?mm\s?f\s?/?\s?\d|f\s?/\s?\d(\.\d)?\s?\d{2,3}\s?mm)(?![a-z0-9])"
 )
 TIPO_FOTOCAMERA = re.compile(
-    r"(?<![a-z0-9])(camera|kamera|aparat|aparat foto|fotoaparat|fotocamera|appareil|slr|rangefinder|"
+    r"(?<![a-z0-9])(camera|kamera|aparat|aparat foto|fotoaparat|fotocamera|fotocamere|appareil|slr|dslr|rangefinder|"
+    r"boitier nu|boitier|gehause|gehaeuse|systeemcamera|spiegelreflexcamera|mirrorless|"
     r"twin lens|tlr|rolleiflex|zorki|fed|kiev|zenit|lubitel|smena|horizont|pentacon six|mamiya|bronica|holga)"
     r"(?![a-z0-9])"
 )
