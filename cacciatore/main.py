@@ -293,7 +293,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
             for v in voci:
                 acquisisci(v, gruppo, negozio=True)
             nuovi_id = toccati[prima:]
-            iniziale = not prec.get("iniziale")
+            iniziale = not prec.get("iniziale") or prec.get("tipo", f.get("tipo")) != f.get("tipo")  # fonte nuova o cambiata
             if iniziale:
                 # primo giro su questa fonte: tutto ciò che c'è già non è una novità, niente avvisi
                 for id_ in nuovi_id:
@@ -304,7 +304,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
                 for id_ in [k for k, a in archivio.items() if a["fonte"] == nome and k not in presenti]:
                     del archivio[id_]
             stato[nome] = {"controllato": iso(adesso), "ultimo_ok": iso(adesso), "ok": True, "errore": None,
-                           "iniziale": True, "trovati": len(voci)}
+                           "iniziale": True, "trovati": len(voci), "tipo": f.get("tipo")}
             log.info("Fonte %s: %d prodotti letti, %d rilevanti%s.", nome, len(voci), len(nuovi_id),
                      " (primo giro, nessun avviso)" if iniziale else "")
 
