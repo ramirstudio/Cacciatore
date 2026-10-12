@@ -161,6 +161,7 @@
     lista.sort(function (a, b) {
       if (ordine === "rarita") return b.punteggio - a.punteggio || cmpNovita(a, b);
       if (ordine === "prezzo") return (a.totale_eur == null) - (b.totale_eur == null) || a.totale_eur - b.totale_eur;
+      if (ordine === "prezzo_dec") return (a.totale_eur == null) - (b.totale_eur == null) || b.totale_eur - a.totale_eur;
       if (ordine === "affare") return (a.rapporto_mediana == null) - (b.rapporto_mediana == null) || a.rapporto_mediana - b.rapporto_mediana;
       return cmpNovita(a, b);
     });
