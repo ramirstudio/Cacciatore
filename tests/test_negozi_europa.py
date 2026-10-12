@@ -219,3 +219,24 @@ class TestSubito(unittest.TestCase):
         self.assertEqual(voci[0]["prezzo"], 390.0)
         self.assertEqual(voci[0]["pubblicato"], "2026-10-12T14:40:00Z")
         self.assertFalse(completo)
+
+
+class TestSchedeProdotto(unittest.TestCase):
+    def test_blocchi_saltano_venduti_e_prendono_il_prezzo_della_scheda(self):
+        from cacciatore.negozi import estrai_blocchi
+        html = (
+            '<div class="product__inner"><a href="https://x.hu/a-Hasznalt"><h2 class="product__name">Canon R5</h2></a>'
+            '<span>Raktáron</span><span>660 000</span> Ft</div>'
+            '<div class="product__inner"><a href="https://x.hu/b-Hasznalt"><h2 class="product__name">Canon R6</h2></a>'
+            '<div>Eladva</div></div>')
+        r = estrai_blocchi(html, {"blocco": "div.product__inner", "titolo_sel": "h2.product__name",
+                                  "scarta_blocco": r"\bEladva\b", "link": "x\\.hu/", "valuta": "HUF"})
+        self.assertEqual([(e["titolo"], e["prezzo"]) for e in r], [("Canon R5", 660000.0)])
+
+    def test_stesso_prodotto_due_link_vale_il_titolo_lungo(self):
+        from cacciatore.negozi import estrai_da_html
+        html = ('<li><a href="https://pch.be/fr/occasions/leica-m6-occasion.html">Occasion</a>'
+                '<a href="https://pch.be/fr/occasions/leica-m6-occasion.html">Leica M6 0.72 Occasion</a>'
+                '<span>1 200,00 €</span></li>')
+        r = estrai_da_html(html, {"link": r"pch\.be/fr/occasions/", "valuta": "EUR"})
+        self.assertEqual(r[0]["titolo"], "Leica M6 0.72 Occasion")
