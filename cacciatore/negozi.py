@@ -429,6 +429,7 @@ PREZZO_TESTO = re.compile(
     rf"(?<![a-zà-ÿа-я]){_VALUTA_RE}\s?(?:{_NUMERO_MIGLIAIA}|\d[\d.,]*)"
     rf"|(?<![\d.,]){_NUMERO_MIGLIAIA}\s?{_VALUTA_RE}"
     rf"|(?<![\d.,])\d[\d.,]*-?\s?{_VALUTA_RE}", re.I)
+TITOLO_INVITO = re.compile(r"^\s*(voir|view|ajouter|add to|cart|panier|détails|details|buy|acheter|read more|kosárba|megnézem|lisää|se mer)", re.I)
 LINK_DA_SALTARE = re.compile(r"unsubscribe|disiscri|preferenz|privacy|cookie|mailto:|/help|assistenza|termini|facebook|instagram|apple\.com|google\.com/store", re.I)
 TLD_PAESI = {"it": "IT", "fr": "FR", "de": "DE", "es": "ES", "pl": "PL", "cz": "CZ", "lt": "LT", "nl": "NL",
              "be": "BE", "at": "AT", "pt": "PT", "sk": "SK", "hu": "HU", "ro": "RO", "hr": "HR", "gr": "GR",
@@ -461,6 +462,38 @@ def _prezzo_corrente(testo):
             if alto > basso and any(abs((alto - basso) - d) < 0.011 and d < basso for d in valori):
                 return next(t for v, t in cifre if v == basso)
     return cifre[0][1]
+
+
+def estrai_blocchi(html, fonte):
+    """Negozi con una scheda per prodotto riconoscibile (selettore CSS in `blocco`): titolo e prezzo vengono dalla
+    scheda stessa, e le schede "scarta_blocco" (venduto, esaurito) si saltano. Evita prezzi presi dalle schede vicine."""
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    scarta = re.compile(fonte["scarta_blocco"], re.I) if fonte.get("scarta_blocco") else None
+    filtro = re.compile(fonte["link"]) if fonte.get("link") else None
+    trovati = {}
+    for blocco in soup.select(fonte["blocco"]):
+        testo = blocco.get_text(" ", strip=True)
+        if scarta and scarta.search(testo):
+            continue
+        link = next((a for a in blocco.find_all("a", href=True) if not filtro or filtro.search(a["href"])), None)
+        if link is None:
+            continue
+        titolo_el = blocco.select_one(fonte["titolo_sel"]) if fonte.get("titolo_sel") else None
+        titolo = (titolo_el or link).get_text(" ", strip=True) or (link.get("title") or "")
+        testo_prezzo = _prezzo_corrente(testo)
+        if not testo_prezzo or len(titolo) < 4:
+            continue
+        immagine = None
+        for im in blocco.find_all("img"):
+            src = im.get("data-src") or im.get("src") or ""
+            if src.startswith("https://") and not re.search(r"space\.jpg|pixel|logo|icon", src, re.I):
+                immagine = src
+                break
+        url = link["href"].split("#")[0]
+        trovati.setdefault(url, {"url": url, "titolo": titolo, "prezzo": parse_prezzo(testo_prezzo),
+                                 "valuta": valuta_da_testo(testo_prezzo, fonte.get("valuta", "EUR")), "immagine": immagine})
+    return list(trovati.values())
 
 
 def estrai_da_html(html, fonte):
@@ -520,6 +553,10 @@ def estrai_da_html(html, fonte):
                 break
         chiave = url.split("?")[0] if len(url.split("?")[0].split("//", 1)[-1]) > 20 else url
         if chiave in trovati:
+            # lo stesso prodotto ha spesso due link (foto e nome): vale il titolo più lungo, se non è un invito
+            prec = trovati[chiave]
+            if len(titolo) > len(prec["titolo"]) and not TITOLO_INVITO.search(titolo):
+                prec["titolo"] = titolo
             continue
         trovati[chiave] = {"url": url.split("#")[0], "titolo": titolo, "prezzo": parse_prezzo(testo_prezzo),
                            "valuta": valuta_da_testo(testo_prezzo, fonte.get("valuta", "EUR")), "immagine": immagine}
@@ -750,7 +787,10 @@ def leggi_pagine(fonte, rete):
             soup = BeautifulSoup(r.text, "html.parser")
             for a in soup.find_all("a", href=True):
                 a["href"] = https(a["href"].strip(), base) or a["href"]
-            trovati = estrai_da_html(str(soup), {**fonte, "link": fonte.get("link", r"/prodotto/")})
+            if fonte.get("blocco"):
+                trovati = estrai_blocchi(str(soup), {**fonte, "link": fonte.get("link", r"/prodotto/")})
+            else:
+                trovati = estrai_da_html(str(soup), {**fonte, "link": fonte.get("link", r"/prodotto/")})
             nuovi = [e for e in trovati if e["url"] not in voci]
             for e in nuovi:
                 titolo = PREZZO_TESTO.sub("", e["titolo"])
