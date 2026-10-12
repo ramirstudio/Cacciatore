@@ -259,7 +259,7 @@ fonti:
       - https://www.foto-erhardt.de/second-hand/gebrauchte-kameras.html
       - https://www.foto-erhardt.de/second-hand/gebrauchte-objektive.html
     link: "/second-hand/gebrauchte-(kameras|objektive)/"
-    titolo_togli: ["^\\s*In \\d+-\\d+ Werktagen", "Sofort lieferbar", "Auf Lager", "Zustand [A-D]", "[-–]?\\s*Versand gratis", "zzgl\\. Versand"]
+    titolo_togli: ["^\\s*In \\d+-\\d+ Werktagen", "Sofort lieferbar", "Auf Lager", "Zustand [A-D]", "[-–]?\\s*Versand gratis", "zzgl\\. Versand", "#\\d{5,}", "\\bgebraucht\\b", "[-–]\\s*\\+*\\s*$"]
     paginazione: percorso         # la pagina 2 è .../gebrauchte-kameras.html/2
     max_pagine: 12
     modalita: moderno
@@ -282,6 +282,7 @@ fonti:
   # ---- Benelux, Spagna, Portogallo
   - nome: Foto de Vakman
     tipo: pagine
+    da_casa: true                 # GitHub è bloccato da questo sito: lo legge il PC di casa
     url: https://www.fotodevakman.nl
     urls:
       - https://www.fotodevakman.nl/occasions/foto/systeemcamera
@@ -321,6 +322,7 @@ fonti:
     ogni_minuti: 240
   - nome: PCH Pro Shop
     tipo: pagine
+    da_casa: true                 # GitHub è bloccato da questo sito: lo legge il PC di casa
     url: https://pch.be
     urls: [https://pch.be/fr/occasions.html]
     link: "pch\\.be/fr/occasions/[a-z0-9/-]*-occasion(-\\d+)?\\.html"
@@ -349,6 +351,7 @@ fonti:
     ogni_minuti: 180
   - nome: Hi-Techwonder
     tipo: woocommerce
+    da_casa: true                 # GitHub è bloccato da questo sito: lo legge il PC di casa
     url: https://hi-techwonder.com
     categoria: "1547,1548"        # câmaras usadas, objetivas usadas
     modalita: moderno
@@ -384,6 +387,7 @@ fonti:
     url: https://www.scandinavianphoto.se
     urls: [https://www.scandinavianphoto.se/begagnat/kamera, https://www.scandinavianphoto.se/begagnat/objektiv]
     link: "scandinavianphoto\\.se/[a-z0-9-]+/[a-z0-9.-]+-[bt]\\d{6}"
+    titolo_togli: ["^\\s*(Begagnad|Brukt|Käytetty)\\s+", "\\((begagnad|brukt|uppackad|åpnet vare|demo|kaytetty)\\)", "\\b(Ny|[A-D])[- ]?(stand|skick)\\b.*$", "\\d+\\s*års garanti.*$", "\\d+\\s*(mnd|månaders) garanti.*$"]
     max_pagine: 5
     modalita: moderno
     paese: SE
@@ -394,6 +398,7 @@ fonti:
     url: https://www.scandinavianphoto.no
     urls: [https://www.scandinavianphoto.no/brukt/kamera, https://www.scandinavianphoto.no/brukt/objektiv]
     link: "scandinavianphoto\\.no/[a-z0-9-]+/[a-z0-9.-]+-[bt]\\d{6}"
+    titolo_togli: ["^\\s*(Begagnad|Brukt|Käytetty)\\s+", "\\((begagnad|brukt|uppackad|åpnet vare|demo|kaytetty)\\)", "\\b(Ny|[A-D])[- ]?(stand|skick)\\b.*$", "\\d+\\s*års garanti.*$", "\\d+\\s*(mnd|månaders) garanti.*$"]
     max_pagine: 5
     modalita: moderno
     paese: NO
@@ -406,6 +411,7 @@ fonti:
       - https://www.goecker.dk/brugt?ProduktType=Camera
       - https://www.goecker.dk/brugt?ProduktType=Lens
     link: "goecker\\.dk/(brugt-1/)?[a-z0-9-]+-(used|demo)(-\\d+)?([?#]|$)"
+    titolo_togli: ["\\*+\\s*DEMO\\s*\\*+", "\\s\\((\\d)\\)", "\\s\\b(USED|DEMO)\\b\\s*[A-Z0-9]{5,}\\s*$", "\\s\\b(USED|DEMO)\\b\\s*$"]
     param_pagina: PageNum
     max_pagine: 6
     modalita: moderno
@@ -436,6 +442,7 @@ fonti:
     url: https://www.gotaplatsensfoto.se
     urls: [https://www.gotaplatsensfoto.se/begagnat]
     link: "gotaplatsensfoto\\.se/begagnat/[a-z0-9-]+-begagnad(-\\d+)?"
+    titolo_togli: ["\\bPris\\s*:.*$", "\\s-\\s*Begagnad\\b", "\\bBegagnad\\b"]
     max_pagine: 1                 # le pagine successive si caricano solo con JavaScript: si leggono i primi 24
     modalita: moderno
     paese: SE
@@ -446,6 +453,7 @@ fonti:
     url: https://www.fotojorgen.no
     urls: [https://www.fotojorgen.no/produkter/brukt/kamera, https://www.fotojorgen.no/produkter/brukt/objektiv]
     link: "fotojorgen\\.no/produkter/brukt/(kamera|objektiv)/brukt-"
+    titolo_togli: ["^\\s*Brukt\\s+"]
     max_pagine: 1
     modalita: moderno
     paese: NO
@@ -468,6 +476,7 @@ fonti:
     ogni_minuti: 180
   - nome: Fotoplus
     tipo: pagine
+    da_casa: true                 # GitHub è bloccato da questo sito: lo legge il PC di casa
     url: https://www.fotoplus.hu
     urls:
       - https://www.fotoplus.hu/hasznalt-termekek/fenykepezpgep
@@ -515,6 +524,7 @@ fonti:
     ogni_minuti: 240
   - nome: Makler.md
     tipo: pagine                  # annunci di privati in Moldavia: spedizione in Italia da concordare
+    da_casa: true                 # GitHub è bloccato da questo sito: lo legge il PC di casa
     url: https://makler.md
     urls:
       - https://makler.md/ru/audio-photo-video/photo/digital-cameras
@@ -533,7 +543,7 @@ fonti:
   # mandano a te. Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
   - nome: Subito
     tipo: email
-    attivo: false                 # accendi (true) quando riesci ad accedere a Subito e a salvare una ricerca
+    attivo: true                  # ricerche salvate su Subito: le mail arrivano alla casella dedicata
     modalita: moderno
     mittenti: ["subito.it"]
     link: "subito\\.it/"          # solo i link che puntano agli annunci
@@ -645,6 +655,74 @@ moderno:
     - spotmatic
     - nikkormat
     - praktisix
+    - analoog
+    - analogica
+    - analogico
+    - analoge
+    - filmkamera
+    - filmkameraer
+    - filmikamera
+    - filmcamera
+    - pellicule
+    - paillard
+    - bolex
+    - super 8
+    - 8mm cine
+    - fujica
+    - minox
+    - konica
+    - vivitar
+    - petri
+    - miranda
+    - chinon
+    - revue
+    - porst
+    - nikkor p
+    - nikkor h
+    - nikkor q
+    - nikkor s
+    - nikkor c
+    - nikon ai
+    - ai nikkor
+    - nikkor ai
+    - ai s
+    - minolta md
+    - minolta mc
+    - leica m2
+    - leica m3
+    - leica m4
+    - leica m5
+    - leica m6
+    - leica m7
+    - leica mp
+    - leica c1
+    - leica minilux
+    - leica r6
+    - leica r7
+    - leica r8
+    - leica r9
+    - eos 1v
+    - eos 1n
+    - eos 3
+    - eos 5
+    - eos 10s
+    - eos 30
+    - eos 33
+    - eos 50
+    - eos 55
+    - eos 100
+    - eos 300
+    - eos 500
+    - eos 500n
+    - eos 600
+    - eos 620
+    - eos 630
+    - eos 650
+    - eos 750
+    - eos 850
+    - eos 1000
+    - eos 3000
+    - eos 5000
   escludi_titolo:
     - battery
     - batteria
@@ -760,6 +838,41 @@ moderno:
     - teleprompter
     - body cap
     - lens board
+    - protector
+    - speedlite
+    - speedlight
+    - flash
+    - blitz
+    - recorder
+    - flash meter
+    - exposure meter
+    - light meter
+    - belichtungsmesser
+    - jumelle
+    - jumelles
+    - binocular
+    - binoculars
+    - kikare
+    - kijker
+    - lornetka
+    - thermal
+    - thermique
+    - hikmicro
+    - extender
+    - tc
+    - jupio
+    - lowepro
+    - monopod
+    - ballhead
+    - väska
+    - veske
+    - taske
+    - laukku
+    - torba
+    - bolsa
+    - tasche
+    - kamerataske
+    - kameraveske
   prezzo_minimo_eur: 45           # sotto questa cifra un pezzo moderno è quasi sempre un accessorio
 
 negozi:
