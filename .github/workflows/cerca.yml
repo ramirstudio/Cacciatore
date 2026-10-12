@@ -48,8 +48,8 @@ jobs:
 
       - name: Salva i dati
         run: |
-          git config user.name "cacciatore"
-          git config user.email "cacciatore@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/data
           if git diff --cached --quiet; then
             echo "Nessuna novità da salvare."
