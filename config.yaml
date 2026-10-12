@@ -541,17 +541,35 @@ fonti:
 
   # Subito, Vinted e Wallapop: Cacciatore non entra nei loro siti. Legge le mail di "ricerca salvata" che i siti
   # mandano a te. Servono i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD (casella dedicata, password per app).
-  - nome: Subito
+  # Le mail di Subito non contengono gli annunci, solo il link alla ricerca salvata. "Subito avvisi" raccoglie
+  # quei link in docs/data/subito_ricerche.json; "Subito" li apre dal PC di casa e legge gli annunci più recenti.
+  # Una ricerca salvata nuova su Subito entra da sola alla prima mail; quelle senza mail da 30 giorni escono.
+  - nome: Subito avvisi
     tipo: email
-    attivo: true                  # ricerche salvate su Subito: le mail arrivano alla casella dedicata
+    attivo: true
     modalita: moderno
     mittenti: ["subito.it"]
-    link: "subito\\.it/"          # solo i link che puntano agli annunci
-    giorni: 3
+    link: "subito\\.it/[a-z0-9-]+/[^?]+\\d{6,}\\.htm"   # se un giorno le mail contenessero gli annunci
+    raccogli_ricerche: "subito\\.it/annunci-"
+    giorni: 7
     paese: IT
     valuta: EUR
     spedizione_stimata_eur: 8
     ogni_minuti: 30
+  - nome: Subito
+    tipo: subito
+    da_casa: true
+    attivo: true
+    modalita: moderno
+    ricerca_salvata: true          # sono ricerche tue: niente filtro per punteggio, avvisi Telegram sui nuovi
+    url: "https://www.subito.it"
+    ricerche:                      # si possono aggiungere a mano; le altre arrivano dalle mail
+      - "https://www.subito.it/annunci-italia/vendita/fotografia/?q=sony+ottiche&order=datedesc"
+    max_ricerche: 25
+    paese: IT
+    valuta: EUR
+    spedizione_stimata_eur: 8
+    ogni_minuti: 60
   - nome: Vinted
     tipo: email
     attivo: false                 # nessuna email di avviso ricevuta: spento
