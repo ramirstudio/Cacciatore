@@ -22,7 +22,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from .rete import ErroreRete
 
@@ -427,8 +427,8 @@ _VALUTA_RE = (r"(?:€|euro?|kr\.?|sek|nok|dkk|zł|zl|pln|kč|czk|ft|huf|lei|ron
 _NUMERO_MIGLIAIA = r"\d{1,3}(?:[.\s\u00a0\u202f]\d{3})+(?:[.,]\d{1,2}|,-)?"
 PREZZO_TESTO = re.compile(
     rf"(?<![a-zà-ÿа-я]){_VALUTA_RE}\s?(?:{_NUMERO_MIGLIAIA}|\d[\d.,]*)"
-    rf"|{_NUMERO_MIGLIAIA}\s?{_VALUTA_RE}"
-    rf"|\d[\d.,]*-?\s?{_VALUTA_RE}", re.I)
+    rf"|(?<![\d.,]){_NUMERO_MIGLIAIA}\s?{_VALUTA_RE}"
+    rf"|(?<![\d.,])\d[\d.,]*-?\s?{_VALUTA_RE}", re.I)
 LINK_DA_SALTARE = re.compile(r"unsubscribe|disiscri|preferenz|privacy|cookie|mailto:|/help|assistenza|termini|facebook|instagram|apple\.com|google\.com/store", re.I)
 TLD_PAESI = {"it": "IT", "fr": "FR", "de": "DE", "es": "ES", "pl": "PL", "cz": "CZ", "lt": "LT", "nl": "NL",
              "be": "BE", "at": "AT", "pt": "PT", "sk": "SK", "hu": "HU", "ro": "RO", "hr": "HR", "gr": "GR",
@@ -537,7 +537,7 @@ def leggi_email(fonte, rete):
         raise ErroreRete("mancano i secret EMAIL_IMAP_UTENTE ed EMAIL_IMAP_PASSWORD")
     giorni = int(fonte.get("giorni", 3))
     dal = (datetime.now(timezone.utc) - timedelta(days=giorni)).strftime("%d-%b-%Y")
-    voci = {}
+    voci, ricerche = {}, {}
     try:
         casella = imaplib.IMAP4_SSL(fonte.get("server", "imap.gmail.com"), timeout=30)
         try:
@@ -561,6 +561,8 @@ def leggi_email(fonte, rete):
                     data = msg["date"].datetime.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 except Exception:  # noqa: BLE001
                     pass
+                if fonte.get("raccogli_ricerche"):
+                    _raccogli_ricerche(corpo.get_content(), fonte, data, ricerche)
                 for e in estrai_da_html(corpo.get_content(), fonte):
                     ident = hashlib.sha1(e["url"].split("?")[0].encode()).hexdigest()[:16]
                     v = _voce(fonte, ident, e["titolo"], e["url"], e["prezzo"], e["valuta"],
@@ -577,6 +579,144 @@ def leggi_email(fonte, rete):
         raise ErroreRete(f"accesso alla posta rifiutato ({e}): controlla utente e password per app") from e
     except OSError as e:
         raise ErroreRete(f"posta non raggiungibile: {e}") from e
+    if fonte.get("raccogli_ricerche"):
+        salva_ricerche(ricerche, fonte.get("file_ricerche", FILE_RICERCHE_SUBITO))
+    return list(voci.values()), False
+
+
+# ------------------------------------------------------------------ Subito
+# Le mail di Subito non contengono gli annunci, solo il link "Vedi i nuovi annunci" alla ricerca salvata.
+# Il giro su GitHub raccoglie quei link in un file; il PC di casa apre le ricerche e legge gli annunci.
+FILE_RICERCHE_SUBITO = os.path.join("docs", "data", "subito_ricerche.json")
+PARAMETRI_INUTILI = re.compile(r"^(utm_|kxconfid$|from$|ref$)")
+
+
+def pulisci_ricerca(url):
+    """Toglie i parametri di tracciamento e ordina dai più recenti."""
+    parti = urlsplit(html.unescape(url.strip()))
+    query = [(k, v) for k, v in parse_qsl(parti.query, keep_blank_values=False) if not PARAMETRI_INUTILI.search(k)]
+    query = [(k, v) for k, v in query if k != "order"] + [("order", "datedesc")]
+    return urlunsplit(("https", parti.netloc.lower(), parti.path, urlencode(query), ""))
+
+
+def _raccogli_ricerche(corpo_html, fonte, data, ricerche):
+    from bs4 import BeautifulSoup
+    filtro = re.compile(fonte["raccogli_ricerche"])
+    for a in BeautifulSoup(corpo_html, "html.parser").find_all("a", href=True):
+        if filtro.search(a["href"]):
+            u = pulisci_ricerca(a["href"])
+            ricerche[u] = max(ricerche.get(u) or "", data or "")
+
+
+def salva_ricerche(nuove, percorso, giorni=30):
+    """Unisce le ricerche trovate nelle mail a quelle già note; dimentica quelle senza mail da 30 giorni."""
+    try:
+        with open(percorso, encoding="utf-8") as fh:
+            note = json.load(fh)
+    except (OSError, ValueError):
+        note = {}
+    for u, d in nuove.items():
+        note[u] = max(note.get(u) or "", d or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    soglia = (datetime.now(timezone.utc) - timedelta(days=giorni)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    note = {u: d for u, d in note.items() if d >= soglia}
+    os.makedirs(os.path.dirname(percorso) or ".", exist_ok=True)
+    with open(percorso, "w", encoding="utf-8") as fh:
+        json.dump(note, fh, ensure_ascii=False, indent=1, sort_keys=True)
+
+
+def ricerche_subito(fonte):
+    elenco = [pulisci_ricerca(u) for u in fonte.get("ricerche", [])]
+    try:
+        with open(fonte.get("file_ricerche", FILE_RICERCHE_SUBITO), encoding="utf-8") as fh:
+            elenco += sorted(json.load(fh), key=lambda u: u)
+    except (OSError, ValueError):
+        pass
+    return list(dict.fromkeys(elenco))[: int(fonte.get("max_ricerche", 25))]
+
+
+def _annunci_next(dati):
+    """Cerca gli annunci nel JSON della pagina (__NEXT_DATA__): oggetti con oggetto, link e caratteristiche."""
+    trovati, pila = [], [dati]
+    while pila:
+        x = pila.pop()
+        if isinstance(x, dict):
+            if isinstance(x.get("subject"), str) and isinstance(x.get("urls"), dict):
+                trovati.append(x)
+                continue
+            pila.extend(x.values())
+        elif isinstance(x, list):
+            pila.extend(x)
+    return trovati
+
+
+def _prezzo_subito(ann):
+    car = ann.get("features") or {}
+    voci = car.values() if isinstance(car, dict) else car
+    for c in voci:
+        if isinstance(c, dict) and "/price" in (c.get("uri") or "") and c.get("values"):
+            v = c["values"][0]
+            return parse_prezzo(str(v.get("key") or v.get("value") or ""))
+    if isinstance(car, dict) and isinstance(car.get("/price"), dict):
+        vals = car["/price"].get("values") or [{}]
+        return parse_prezzo(str(vals[0].get("key") or vals[0].get("value") or ""))
+    return None
+
+
+def _immagine_subito(ann):
+    for im in ann.get("images") or []:
+        if isinstance(im, dict):
+            if im.get("cdnBaseUrl"):
+                return im["cdnBaseUrl"] + "?rule=gallery-desktop-1x-auto"
+            for s in (im.get("scale") or []):
+                if isinstance(s, dict) and s.get("uri", "").startswith("https://"):
+                    return s["uri"]
+    return None
+
+
+def leggi_subito(fonte, rete):
+    """Apre le ricerche salvate su Subito (dalle mail o da config.yaml) e legge la prima pagina, la più recente."""
+    from bs4 import BeautifulSoup
+    ricerche = ricerche_subito(fonte)
+    if not ricerche:
+        raise RuntimeError("nessuna ricerca salvata: aspetta la prima mail di Subito o aggiungi 'ricerche' in config.yaml")
+    voci, errori = {}, []
+    for url in ricerche:
+        try:
+            r = rete.get(url)
+        except ErroreRete as e:
+            errori.append(str(e))
+            continue
+        soup = BeautifulSoup(r.text, "html.parser")
+        tag = soup.find("script", id="__NEXT_DATA__")
+        annunci = []
+        if tag and tag.string:
+            try:
+                annunci = _annunci_next(json.loads(tag.string))
+            except ValueError:
+                annunci = []
+        for ann in annunci:
+            link = (ann.get("urls") or {}).get("default")
+            prezzo = _prezzo_subito(ann)
+            if not link or prezzo is None:
+                continue
+            ident = ann.get("urn") or link
+            data = None
+            if isinstance(ann.get("date"), str) and re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d", ann["date"]):
+                from zoneinfo import ZoneInfo  # Subito scrive l'ora italiana
+                locale = datetime.strptime(ann["date"][:16], "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo("Europe/Rome"))
+                data = locale.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            v = _voce(fonte, hashlib.sha1(str(ident).encode()).hexdigest()[:16], ann["subject"], link, prezzo,
+                      "EUR", immagine=_immagine_subito(ann), pubblicato=data)
+            voci[v["id"]] = v
+        if not annunci:  # pagina senza JSON: si cercano i link agli annunci nell'HTML
+            for e in estrai_da_html(r.text, {**fonte, "link": r"subito\.it/[a-z0-9-]+/[^?#]+\d{6,}\.htm"}):
+                if e["prezzo"] is None:
+                    continue
+                ident = hashlib.sha1(e["url"].split("?")[0].encode()).hexdigest()[:16]
+                v = _voce(fonte, ident, e["titolo"], e["url"], e["prezzo"], "EUR", immagine=e["immagine"])
+                voci[v["id"]] = v
+    if not voci and errori:
+        raise ErroreRete(errori[0])
     return list(voci.values()), False
 
 
@@ -617,6 +757,7 @@ def leggi_pagine(fonte, rete):
                 for togli in fonte.get("titolo_togli", []):
                     titolo = re.sub(togli, "", titolo, flags=re.I)
                 titolo = re.sub(r"\s+", " ", titolo).strip(" -–—·|")
+                titolo = re.sub(r"\b(\w{3,})\s+\1\b", r"\1", titolo, flags=re.I)  # "Sirui Sirui 40mm" -> "Sirui 40mm"
                 if len(titolo) < 4 or e["prezzo"] is None:
                     continue
                 if fonte.get("valute_ammesse") and e["valuta"] not in fonte["valute_ammesse"]:
@@ -675,6 +816,7 @@ LETTORI = {
     "mpb": leggi_pagine,
     "pagine": leggi_pagine,
     "vtex": leggi_vtex,
+    "subito": leggi_subito,
 }
 
 
