@@ -121,3 +121,101 @@ class TestCrawlDelay(unittest.TestCase):
         rete = Rete(sessione=sessione)
         self.assertTrue(rete.permesso("https://shop.example/begagnat"))
         self.assertEqual(rete.pausa_host["https://shop.example"], 10.0)
+
+
+class TestCodiciArticolo(unittest.TestCase):
+    def test_il_codice_non_si_attacca_al_prezzo(self):
+        self.assertEqual(prezzo("SGD010018 495,00 €"), (495.0, "EUR"))
+        self.assertEqual(prezzo("SGD010019 449,95 €"), (449.95, "EUR"))
+        self.assertEqual(prezzo("18 495 €"), (18495.0, "EUR"))
+
+    def test_parole_doppie_nel_titolo(self):
+        html = '<div><a href="https://x.example/it/p/s">Sirui Sirui 40mm T1.8</a><span>649 €</span></div>'
+        fonte = {"nome": "P", "tipo": "pagine", "url": "https://x.example", "urls": ["https://x.example/u"], "link": "/it/p/", "max_pagine": 1}
+        voci, _ = leggi_pagine(fonte, ReteFinta({"https://x.example/u": html}))
+        self.assertEqual(voci[0]["titolo"], "Sirui 40mm T1.8")
+
+
+class TestCodifica(unittest.TestCase):
+    def test_utf8_senza_charset_non_diventa_latin1(self):
+        testo = "Canon 580EX för Canon EOS 6D"
+        sessione = mock.Mock()
+        sessione.headers = {}
+        risposta = mock.Mock(status_code=200, content=testo.encode("utf-8"), encoding="ISO-8859-1",
+                             apparent_encoding="utf-8", headers={"Content-Type": "text/html"})
+        sessione.get.return_value = risposta
+        rete = Rete(sessione=sessione)
+        rete._robots["https://x.example"] = mock.Mock(can_fetch=lambda *a: True)
+        r = rete.get("https://x.example/p")
+        self.assertEqual(r.encoding, "utf-8")
+
+
+class TestFiltriModerno(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import yaml
+        from pathlib import Path
+        from cacciatore.punteggio import Valutatore
+        cfg = yaml.safe_load((Path(__file__).parent.parent / "config.yaml").read_text(encoding="utf-8"))
+        cls.v = Valutatore(cfg)
+
+    def scartato(self, t):
+        return self.v.da_scartare_moderno(t) or self.v.da_scartare(t) or self.v.da_scartare_negozio(t)
+
+    def test_fuori_pellicola_e_accessori(self):
+        for t in ["Paillard Bolex B8 – Occasion", "Käytetty Minox B filmikamera", "Leica C1 gebraucht",
+                  "Canon EOS 300 + EF 28-90mm f4-5,6 silber gebraucht", "Lens Protector 77mm - Used",
+                  "Canon Speedlite 580EX flash - Used", "Zoom H1 Handy Recorder - Used", "FUJI XF 1,4X TC WR",
+                  "Canon Extender EF 1,4X III", "Jupio JBG-C009 för Canon EOS 6D", "Lowepro Vertex 200 AW",
+                  "Jumelle à imagerie thermique Raptor RQ50LN - HIKMICRO", "Nikon Nikkor -P 105mm f/2,5 manual-Focus",
+                  "Cámara analógica Leica M2 cuerpo segunda mano", "Canon EOS 500N film", "Canon EOS 1V Body"]:
+            self.assertTrue(self.scartato(t), t)
+
+    def test_restano_corpi_digitali_e_ottiche_moderne(self):
+        for t in ["Nikon Z6 II Body gebraucht", "Canon EOS 5D Mark IV", "Canon EOS 50D", "Canon EOS 100D", "Canon EOS 300D",
+                  "Canon EOS 3000D", "Canon EOS 1000D", "Canon EOS R5", "Sony Alpha 7 V (boîtier nu)", "Fujifilm X-T3",
+                  "Canon EOS 5DS R", "Sony FE 85mm f/1.8", "Canon EOS R6 with Speedlite flash", "Nikon Z 24-70mm f/2.8 S",
+                  "Sony A7 III, body", "Sony PXW-Z90 camcorder"]:
+            self.assertFalse(self.scartato(t), t)
+
+
+class TestPuliziaTitoliDaConfig(unittest.TestCase):
+    def test_titoli_scandinavi(self):
+        import re
+        import yaml
+        from pathlib import Path
+        cfg = yaml.safe_load((Path(__file__).parent.parent / "config.yaml").read_text(encoding="utf-8"))
+        fonte = next(f for f in cfg["fonti"] if f["nome"] == "Scandinavian Photo NO")
+        t = "Brukt A7C II Body (åpnet vare) Sony A7C II Body (åpnet vare) Ny stand 1 års garanti"
+        t = re.sub(r"^\s*Brukt\s+", "", t)
+        for togli in fonte["titolo_togli"]:
+            t = re.sub(togli, "", t, flags=re.I)
+        self.assertEqual(re.sub(r"\s+", " ", t).strip(), "A7C II Body Sony A7C II Body")
+
+
+class TestSubito(unittest.TestCase):
+    def test_pulisci_ricerca(self):
+        from cacciatore.negozi import pulisci_ricerca
+        u = pulisci_ricerca("https://www.subito.it/annunci-italia/vendita/fotografia/?kxconfid=x&amp;order=datedesc&amp;q=sony+ottiche&amp;utm_term=1")
+        self.assertEqual(u, "https://www.subito.it/annunci-italia/vendita/fotografia/?q=sony+ottiche&order=datedesc")
+
+    def test_legge_next_data(self):
+        import json
+        from cacciatore.negozi import leggi_subito
+        ann = {"subject": "Sony FE 85mm", "urn": "id:ad:1", "date": "2026-10-12 16:40:12",
+               "urls": {"default": "https://www.subito.it/fotografia/sony-fe-85-milano-612345678.htm"},
+               "features": {"/price": {"uri": "/price", "values": [{"key": "390", "value": "390 €"}]}}}
+        pagina = '<script id="__NEXT_DATA__" type="application/json">' + json.dumps({"a": {"list": [{"item": ann}]}}) + "</script>"
+
+        class R:
+            text = pagina
+
+        class Rete:
+            def get(self, url, params=None):
+                return R()
+        voci, completo = leggi_subito({"nome": "Subito", "paese": "IT", "file_ricerche": "/nessuno.json",
+                                       "ricerche": ["https://www.subito.it/annunci-italia/vendita/fotografia/?q=x"]}, Rete())
+        self.assertEqual(len(voci), 1)
+        self.assertEqual(voci[0]["prezzo"], 390.0)
+        self.assertEqual(voci[0]["pubblicato"], "2026-10-12T14:40:00Z")
+        self.assertFalse(completo)
