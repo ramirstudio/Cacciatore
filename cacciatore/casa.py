@@ -77,8 +77,7 @@ def invia(ris, token, repo=REPO):
         r = requests.get(url, headers=intest, timeout=30)
         if r.status_code == 401:
             raise RuntimeError("GitHub rifiuta il token: controlla token.txt (scaduto o copiato male)")
-        corpo = {"message": f"casa: {ris['nome']}", "content": contenuto,
-                 "committer": {"name": "cacciatore-casa", "email": "cacciatore@users.noreply.github.com"}}
+        corpo = {"message": f"casa: {ris['nome']}", "content": contenuto}  # autore: il proprietario del token
         if r.status_code == 200:
             corpo["sha"] = r.json()["sha"]
         r = requests.put(url, headers=intest, json=corpo, timeout=60)
