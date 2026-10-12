@@ -212,6 +212,7 @@ fonti:
   # le pagine di categoria. Le legge il PC di casa (cartella CacciatoreCasa, python -m cacciatore.casa) e
   # deposita il risultato in docs/data/casa/; qui si prende l'ultimo file arrivato.
   - nome: MPB fotocamere
+    attivo: false                 # il sito blocca i programmi automatici anche da casa (403 su robots.txt): rinunciato
     tipo: mpb
     da_casa: true
     url: https://www.mpb.com
@@ -228,6 +229,7 @@ fonti:
     ogni_minuti: 60
     max_ore_casa: 48
   - nome: MPB obiettivi
+    attivo: false                 # il sito blocca i programmi automatici anche da casa (403 su robots.txt): rinunciato
     tipo: mpb
     da_casa: true
     url: https://www.mpb.com
@@ -281,6 +283,7 @@ fonti:
 
   # ---- Benelux, Spagna, Portogallo
   - nome: Foto de Vakman
+    attivo: false                 # il sito blocca i programmi automatici anche da casa (403 su robots.txt): rinunciato
     tipo: pagine
     da_casa: true                 # GitHub è bloccato da questo sito: lo legge il PC di casa
     url: https://www.fotodevakman.nl
@@ -328,6 +331,7 @@ fonti:
     link: "pch\\.be/fr/occasions/[a-z0-9/-]*-occasion(-\\d+)?\\.html"
     param_pagina: p
     max_pagine: 13
+    titolo_togli: ["\\s+Occasion\\s*$"]
     modalita: moderno
     paese: BE
     valuta: EUR
@@ -482,6 +486,10 @@ fonti:
       - https://www.fotoplus.hu/hasznalt-termekek/fenykepezpgep
       - https://www.fotoplus.hu/hasznalt-termekek/objektiv
     link: "fotoplus\\.hu/[A-Za-z0-9-]*[Hh]asznal"
+    blocco: "div.product__inner"        # una scheda per prodotto: titolo e prezzo vengono da lì
+    titolo_sel: "h2.product__name"
+    scarta_blocco: "\\bEladva\\b"          # "Eladva" = venduto
+    titolo_togli: ["\\(Haszn[aá]lt\\s+term[eé]k\\)", "^\\s*ÚJ\\s+"]
     paginazione: virgola
     max_pagine: 4
     modalita: moderno
@@ -523,6 +531,7 @@ fonti:
     valuta: EUR
     ogni_minuti: 240
   - nome: Makler.md
+    attivo: false                 # il sito blocca i programmi automatici anche da casa (403 su robots.txt): rinunciato
     tipo: pagine                  # annunci di privati in Moldavia: spedizione in Italia da concordare
     da_casa: true                 # GitHub è bloccato da questo sito: lo legge il PC di casa
     url: https://makler.md
