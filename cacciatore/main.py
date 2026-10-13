@@ -376,7 +376,7 @@ def esegui(cfg, percorso_dati, cerca_ebay, cerca_allegro, telegram, adesso, tass
     for a in elenco:
         a.pop("motivi_avviso", None)
 
-    configurate = {f["nome"] for f in cfg.get("fonti", [])} | {"eBay"}
+    configurate = {f["nome"] for f in cfg.get("fonti", []) if f.get("attivo", True)} | {"eBay"}  # le fonti spente escono dal pannello
     uscita = {
         "aggiornato": iso(adesso),
         "nomi_paesi": NOMI_PAESI,
